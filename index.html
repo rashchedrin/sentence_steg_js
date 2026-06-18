@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grammar Steg — v9 (браузер)</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="header-inner">
+        <div class="header-top">
+          <div>
+            <h1>Grammar Steg</h1>
+            <p class="subtitle">Стeganография в русскоязычном тексте — грамматика v9, полностью в браузере</p>
+          </div>
+          <div class="version-control">
+            <p class="label">Грамматика</p>
+            <p class="version-name" id="version-name">Версия 9</p>
+            <p id="version-description" class="version-description"></p>
+            <p id="corpus-status" class="version-description">Загрузка корпуса…</p>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="main">
+      <nav class="tabs" role="tablist" aria-label="Режим работы">
+        <button class="tab active" role="tab" aria-selected="true" data-tab="encode" id="tab-encode">
+          Кодирование
+        </button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="decode" id="tab-decode">
+          Декодирование
+        </button>
+      </nav>
+
+      <section class="panel active" id="panel-encode" role="tabpanel" aria-labelledby="tab-encode">
+        <div class="card">
+          <div class="input-mode" role="radiogroup" aria-label="Тип входных данных">
+            <label class="radio-label">
+              <input type="radio" name="encode-mode" value="text" checked>
+              UTF-8 текст
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="encode-mode" value="bits">
+              Поток бит
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="encode-mode" value="file">
+              Бинарный файл
+            </label>
+          </div>
+
+          <div id="encode-text-panel">
+            <label class="label" for="encode-text-input">Текст (UTF-8)</label>
+            <textarea
+              id="encode-text-input"
+              class="textarea"
+              rows="6"
+              placeholder="Секретное сообщение"
+              spellcheck="true"
+            ></textarea>
+          </div>
+
+          <div id="encode-bits-panel" hidden>
+            <label class="label" for="encode-input">Поток бит (0 и 1)</label>
+            <textarea
+              id="encode-input"
+              class="textarea textarea-mono"
+              rows="6"
+              placeholder="1011010110"
+              spellcheck="false"
+            ></textarea>
+          </div>
+
+          <div id="encode-file-panel" hidden>
+            <label class="label" for="encode-file">Бинарный файл</label>
+            <input id="encode-file" class="file-input" type="file">
+            <p id="encode-file-info" class="file-info">Файл не выбран</p>
+          </div>
+
+          <div class="password-control">
+            <label class="checkbox-label">
+              <input type="checkbox" id="encode-use-password">
+              Зашифровать паролем (GPG)
+            </label>
+            <label class="label" for="encode-password">Пароль</label>
+            <input
+              id="encode-password"
+              class="text-input"
+              type="password"
+              autocomplete="new-password"
+              disabled
+            >
+          </div>
+
+          <div class="actions">
+            <button class="button primary" id="encode-button" type="button" disabled>Сгенерировать текст</button>
+            <button class="button secondary" id="encode-clear" type="button">Очистить</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Русский текст</h2>
+            <button class="button ghost" id="encode-copy" type="button" hidden>Копировать</button>
+          </div>
+          <p id="encode-stats" class="stats" hidden></p>
+          <div id="encode-output" class="output" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-decode" role="tabpanel" aria-labelledby="tab-decode" hidden>
+        <div class="card">
+          <label class="label" for="decode-input">Русский текст</label>
+          <textarea
+            id="decode-input"
+            class="textarea"
+            rows="6"
+            placeholder="кот спит. большой дом стоит."
+            spellcheck="false"
+          ></textarea>
+          <div class="password-control">
+            <label class="checkbox-label">
+              <input type="checkbox" id="decode-use-password">
+              Расшифровать паролем (GPG)
+            </label>
+            <label class="label" for="decode-password">Пароль</label>
+            <input
+              id="decode-password"
+              class="text-input"
+              type="password"
+              autocomplete="current-password"
+              disabled
+            >
+          </div>
+          <div class="actions">
+            <button class="button primary" id="decode-button" type="button" disabled>Извлечь биты</button>
+            <button class="button secondary" id="decode-clear" type="button">Очистить</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Результат</h2>
+            <div class="card-actions">
+              <button class="button ghost" id="decode-download" type="button" hidden>Скачать .bin</button>
+              <button class="button ghost" id="decode-utf8-copy" type="button" hidden>Копировать текст</button>
+              <button class="button ghost" id="decode-copy" type="button" hidden>Копировать биты</button>
+            </div>
+          </div>
+          <p id="decode-stats" class="stats" hidden></p>
+          <div id="decode-utf8-section" class="decode-section" hidden>
+            <h3 class="decode-section-title">UTF-8 текст</h3>
+            <div id="decode-utf8-output" class="output" aria-live="polite"></div>
+          </div>
+          <div class="decode-section">
+            <h3 class="decode-section-title">Поток бит</h3>
+            <div id="decode-output" class="output output-mono" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="message" class="message" role="alert" hidden></div>
+    </main>
+
+    <footer class="footer">
+      <p>Совместимо с Python grammar-steg v9 (биты, GPG AES128+ZIP). Корпус загружается локально, без сервера.</p>
+    </footer>
+  </div>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>

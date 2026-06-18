@@ -1,0 +1,20 @@
+{
+  "name": "sentence-steg-js",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:python": "node tests/python-compat-check.mjs"
+  },
+  "dependencies": {
+    "openpgp": "^6.1.1"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5",
+    "vitest": "^3.2.4"
+  }
+}
