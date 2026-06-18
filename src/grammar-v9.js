@@ -1,4 +1,4 @@
-/** Grammar version 9: v8 corpus with anonymized character names. */
+/** Grammar version 9: anonymized Tatoeba corpus. */
 
 import { preprocessPayloadBits, postprocessPayloadBits } from "./bit-preprocess.js";
 import { SentenceCorpus } from "./corpus.js";
@@ -12,7 +12,7 @@ export const GRAMMAR_V9_CORPUS_URL = `${import.meta.env.BASE_URL}data/corpora/v9
 export const GRAMMAR_V9_ID = "v9";
 
 /** @type {string} */
-export const GRAMMAR_V9_DISPLAY_NAME = "Версия 9 — корпус без имён Tatoeba";
+export const GRAMMAR_V9_DISPLAY_NAME = "Корпус без имён персонажей";
 
 /**
  * Encode each sentence index into an anonymized real Russian sentence.
@@ -40,14 +40,14 @@ export class GrammarV9 {
   get description() {
     if (this._corpus) {
       return (
-        `Как v8: каждые ${this._corpus.bitsPerSentence} бит кодируют одно из `
-        + `${this._corpus.corpusSize} реальных предложений, но имена персонажей `
-        + "Tatoeba заменены случайными русскими именами."
+        `Каждые ${this._corpus.bitsPerSentence} бит кодируют одно из `
+        + `${this._corpus.corpusSize} реальных предложений; имена персонажей `
+        + "заменены случайными русскими именами."
       );
     }
     return (
-      "Как v8: каждые 20 бит кодируют одно из реальных предложений, "
-      + "но имена персонажей Tatoeba заменены случайными русскими именами."
+      "Каждые 20 бит кодируют одно из реальных предложений; "
+      + "имена персонажей заменены случайными русскими именами."
     );
   }
 

@@ -53,17 +53,6 @@ body {
   gap: 1.5rem;
 }
 
-.version-control {
-  min-width: 16rem;
-}
-
-.version-description {
-  margin: 0.45rem 0 0;
-  color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.4;
-}
-
 .select {
   width: 100%;
   margin-top: 0.35rem;
@@ -90,6 +79,13 @@ body {
   margin: 0;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.corpus-status {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
 }
 
 .tabs {
@@ -340,18 +336,38 @@ body {
   font-size: 0.92rem;
 }
 
+.about-card h2 {
+  margin: 1.5rem 0 0.65rem;
+  font-size: 1.05rem;
+}
+
+.about-card h2:first-child {
+  margin-top: 0;
+}
+
+.about-card p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.about-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  line-height: 1.65;
+}
+
+.about-list li + li {
+  margin-top: 0.65rem;
+}
+
+.about-card code {
+  font-family: var(--mono);
+  font-size: 0.9em;
+}
+
 @media (max-width: 640px) {
   .page {
     padding-top: 1rem;
-  }
-
-  .header-top {
-    flex-direction: column;
-  }
-
-  .version-control {
-    width: 100%;
-    min-width: 0;
   }
 
   .header h1 {
@@ -365,9 +381,4 @@ body {
   .button {
     width: 100%;
   }
-}
-
-.version-name {
-  margin: 0.35rem 0 0;
-  font-weight: 600;
 }

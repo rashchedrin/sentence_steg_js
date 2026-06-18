@@ -3,7 +3,6 @@
 import { bytesToBits, bytesToUtf8TextIfValid } from "./binary-payload.js";
 import { generateText } from "./codec.js";
 import {
-  GRAMMAR_V9_DISPLAY_NAME,
   grammarV9,
 } from "./grammar-v9.js";
 import {
@@ -17,11 +16,11 @@ const tabButtons = document.querySelectorAll(".tab");
 const panels = {
   encode: document.getElementById("panel-encode"),
   decode: document.getElementById("panel-decode"),
+  about: document.getElementById("panel-about"),
 };
 
-const versionDescription = document.getElementById("version-description");
 const corpusStatus = document.getElementById("corpus-status");
-const versionName = document.getElementById("version-name");
+const aboutBitsPerSentence = document.getElementById("about-bits-per-sentence");
 
 const encodeModeInputs = document.querySelectorAll('input[name="encode-mode"]');
 const encodeBitsPanel = document.getElementById("encode-bits-panel");
@@ -207,17 +206,17 @@ function setCorpusReady(ready) {
  * @returns {Promise<void>}
  */
 async function loadCorpus() {
-  versionName.textContent = GRAMMAR_V9_DISPLAY_NAME;
-  versionDescription.textContent = grammarV9.description;
   corpusStatus.textContent = "Загрузка корпуса предложений (~70 МБ)…";
   try {
     await grammarV9.loadCorpus();
-    versionDescription.textContent = grammarV9.description;
     const corpus = grammarV9.activeCorpus();
     corpusStatus.textContent = (
       `Корпус загружен: ${corpus.corpusSize.toLocaleString("ru-RU")} предложений, `
       + `${corpus.bitsPerSentence} бит на предложение`
     );
+    if (aboutBitsPerSentence) {
+      aboutBitsPerSentence.textContent = String(corpus.bitsPerSentence);
+    }
     setCorpusReady(true);
   } catch (error) {
     corpusStatus.textContent = "Не удалось загрузить корпус";
@@ -227,7 +226,7 @@ async function loadCorpus() {
 }
 
 /**
- * @param {"encode" | "decode"} tabName
+ * @param {"encode" | "decode" | "about"} tabName
  * @returns {void}
  */
 function activateTab(tabName) {
