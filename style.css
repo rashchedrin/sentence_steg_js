@@ -53,6 +53,17 @@ body {
   gap: 1.5rem;
 }
 
+.version-control {
+  min-width: 16rem;
+}
+
+.version-description {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .select {
   width: 100%;
   margin-top: 0.35rem;
@@ -368,6 +379,15 @@ body {
 @media (max-width: 640px) {
   .page {
     padding-top: 1rem;
+  }
+
+  .header-top {
+    flex-direction: column;
+  }
+
+  .version-control {
+    width: 100%;
+    min-width: 0;
   }
 
   .header h1 {

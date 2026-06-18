@@ -1,18 +1,31 @@
-# Grammar Steg v9 — браузерная версия
+# Grammar Steg — браузерная версия
 
-Клиентское приложение без бэкенда, совместимое с Python [`grammar-steg`](../README.md) v9:
+Клиентское приложение без бэкенда: произвольные данные прячутся внутри обычного русского текста из большого корпуса предложений. Все вычисления выполняются локально в браузере.
 
-- те же биты препроцессинга (CPython MT19937 + SHA-256 seed);
-- тот же корпус `data/corpora/v9/sentences.json`;
-- GPG-совместимое симметричное шифрование (AES128 + ZIP, OpenPGP binary);
-- перекрёстное кодирование/декодирование бит и полезной нагрузки с Python.
+Демо: https://rashchedrin.github.io/sentence_steg_js/
 
-Абзацы в cover-тексте разбиваются с **тем же распределением длин**, что в Python v7/v8/v9, но сид — FNV-1a (не `hash()` Python). На биты это не влияет: при декодировании `\n\n` схлопываются в пробел.
+## Версии алгоритма
+
+| Версия | Перемешивание бит | По умолчанию |
+|--------|-------------------|--------------|
+| **v9** | два раунда XOR + перестановки (MT19937) | |
+| **v10** | несбалансированная сеть Фейстеля (SHAKE-256, сид `feistel_iv`, 4 раунда) | ✓ |
+
+Обе версии используют один корпус (`public/data/corpora/v9/sentences.json`), GPG-шифрование (AES-128 + ZIP, OpenPGP binary) и одинаковую схему кодирования предложений (20 бит на предложение). При декодировании нужна та же версия, что при кодировании.
+
+Версия v10 даёт лавинный эффект: изменение одного входного бита меняет примерно половину выходных бит и, соответственно, почти весь cover-текст.
+
+Новые версии добавляются в `src/grammars.js` (реестр) плюс файл `grammar-vN.js` и модуль в `src/bit-diffusion/`.
 
 ## Запуск
 
 ```bash
-cd sentence_steg_js
+./run_server.sh
+```
+
+или вручную:
+
+```bash
 npm install
 npm run dev
 ```
@@ -26,23 +39,28 @@ npm run build
 npm run preview
 ```
 
+## Деплой на GitHub Pages
+
+В репозитории: **Settings → Pages → Source: GitHub Actions**. При пуше в `main` workflow `.github/workflows/deploy.yml` собирает `dist/` и публикует сайт.
+
 ## Тесты
 
 ```bash
 npm test
-npm run test:python   # сверка битов и GPG с Python (нужен gpg в PATH)
+npm run test:python   # сверка v9 битов и GPG с Python (нужен gpg и grammar-steg в соседнем репо)
 ```
 
 ## Структура
 
 | Модуль | Назначение |
 |--------|------------|
-| `src/python-random.js` | CPython MT19937 |
-| `src/paragraph.js` | распределение длин абзацев |
-| `src/bit-preprocess.js` | XOR + перестановки бит |
+| `src/grammars.js` | реестр версий алгоритма |
+| `src/grammar-base.js` | общая логика: корпус, абзацы, split/join |
+| `src/grammar-v9.js`, `src/grammar-v10.js` | конфигурации версий |
+| `src/bit-diffusion/` | модули перемешивания бит (xor-permute, feistel) |
 | `src/codec.js` | `generateText` / `parseText` |
 | `src/gpg-crypto.js` | OpenPGP.js ↔ system gpg |
 | `src/payload-codec.js` | UTF-8/bytes + опциональный пароль |
 | `src/app.js` | Web UI |
 
-Корпус: симлинк `public/data/corpora/v9/sentences.json` → `../../data/corpora/v9/sentences.json`.
+Корпус: `public/data/corpora/v9/sentences.json` (~70 МБ, в репозитории).

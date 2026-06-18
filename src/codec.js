@@ -1,11 +1,11 @@
-/** Encode and decode bit payloads using grammar v9. */
+/** Encode and decode bit payloads using a grammar steg version. */
 
 import { BitReader, BitWriter, PAYLOAD_SENTINEL_BIT, decodePayloadFromReconstructed } from "./bit-stream.js";
-import { GrammarV9 } from "./grammar-v9.js";
+import { GrammarSteg } from "./grammar-base.js";
 
 /**
  * @param {BitReader} reader
- * @param {GrammarV9} grammar
+ * @param {GrammarSteg} grammar
  * @returns {string}
  */
 function generateSentence(reader, grammar) {
@@ -15,7 +15,7 @@ function generateSentence(reader, grammar) {
 
 /**
  * @param {string} payloadBits
- * @param {GrammarV9} grammar
+ * @param {GrammarSteg} grammar
  * @returns {Promise<string>}
  */
 export async function generateText(payloadBits, grammar) {
@@ -34,7 +34,7 @@ export async function generateText(payloadBits, grammar) {
 
 /**
  * @param {string} coverText
- * @param {GrammarV9} grammar
+ * @param {GrammarSteg} grammar
  * @returns {string}
  */
 function reconstructBits(coverText, grammar) {
@@ -48,7 +48,7 @@ function reconstructBits(coverText, grammar) {
 
 /**
  * @param {string} coverText
- * @param {GrammarV9} grammar
+ * @param {GrammarSteg} grammar
  * @returns {Promise<string>}
  */
 export async function parseText(coverText, grammar) {

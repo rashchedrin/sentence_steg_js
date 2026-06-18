@@ -1,10 +1,12 @@
-/** Client-side Web UI for grammar steg v9 (no backend). */
+/** Client-side Web UI for grammar steg (no backend). */
 
 import { bytesToBits, bytesToUtf8TextIfValid } from "./binary-payload.js";
 import { generateText } from "./codec.js";
 import {
-  grammarV9,
-} from "./grammar-v9.js";
+  createGrammar,
+  DEFAULT_GRAMMAR_VERSION_ID,
+  listGrammarDefinitions,
+} from "./grammars.js";
 import {
   decodeCoverTextToBytes,
   encodeBytesToCoverText,
@@ -19,8 +21,11 @@ const panels = {
   about: document.getElementById("panel-about"),
 };
 
+const grammarVersionSelect = document.getElementById("grammar-version");
+const grammarDescription = document.getElementById("grammar-description");
 const corpusStatus = document.getElementById("corpus-status");
 const aboutBitsPerSentence = document.getElementById("about-bits-per-sentence");
+const aboutDiffusionDescription = document.getElementById("about-diffusion-description");
 
 const encodeModeInputs = document.querySelectorAll('input[name="encode-mode"]');
 const encodeBitsPanel = document.getElementById("encode-bits-panel");
@@ -64,6 +69,12 @@ let lastDecodedBytes = null;
 
 /** @type {boolean} */
 let corpusReady = false;
+
+/** @type {import("./grammar-base.js").GrammarSteg | null} */
+let activeGrammar = null;
+
+/** @type {Map<string, import("./corpus.js").SentenceCorpus>} */
+const loadedCorporaByUrl = new Map();
 
 /**
  * @param {string} text
@@ -203,26 +214,67 @@ function setCorpusReady(ready) {
 }
 
 /**
+ * @returns {import("./grammar-base.js").GrammarSteg}
+ */
+function requireActiveGrammar() {
+  if (!activeGrammar) {
+    throw new Error("grammar is not loaded");
+  }
+  return activeGrammar;
+}
+
+/**
+ * @returns {void}
+ */
+function updateGrammarDescription() {
+  if (!activeGrammar) {
+    return;
+  }
+  grammarDescription.textContent = activeGrammar.description;
+  if (aboutDiffusionDescription) {
+    aboutDiffusionDescription.textContent = activeGrammar.diffusionSummary;
+  }
+}
+
+/**
+ * @returns {void}
+ */
+function populateGrammarVersionSelect() {
+  for (const grammarDefinition of listGrammarDefinitions()) {
+    const optionElement = document.createElement("option");
+    optionElement.value = grammarDefinition.versionId;
+    optionElement.textContent = grammarDefinition.displayName;
+    grammarVersionSelect.appendChild(optionElement);
+  }
+  grammarVersionSelect.value = DEFAULT_GRAMMAR_VERSION_ID;
+}
+
+/**
+ * @param {string} versionId
  * @returns {Promise<void>}
  */
-async function loadCorpus() {
+async function activateGrammarVersion(versionId) {
+  setCorpusReady(false);
   corpusStatus.textContent = "Загрузка корпуса предложений (~70 МБ)…";
-  try {
-    await grammarV9.loadCorpus();
-    const corpus = grammarV9.activeCorpus();
-    corpusStatus.textContent = (
-      `Корпус загружен: ${corpus.corpusSize.toLocaleString("ru-RU")} предложений, `
-      + `${corpus.bitsPerSentence} бит на предложение`
-    );
-    if (aboutBitsPerSentence) {
-      aboutBitsPerSentence.textContent = String(corpus.bitsPerSentence);
-    }
-    setCorpusReady(true);
-  } catch (error) {
-    corpusStatus.textContent = "Не удалось загрузить корпус";
-    setCorpusReady(false);
-    showMessage(error instanceof Error ? error.message : String(error));
+  const grammar = createGrammar(versionId);
+  const cachedCorpus = loadedCorporaByUrl.get(grammar.corpusUrl);
+  if (cachedCorpus) {
+    grammar.setCorpus(cachedCorpus);
+  } else {
+    await grammar.loadCorpus();
+    loadedCorporaByUrl.set(grammar.corpusUrl, grammar.activeCorpus());
   }
+  activeGrammar = grammar;
+  const corpus = grammar.activeCorpus();
+  corpusStatus.textContent = (
+    `Корпус загружен: ${corpus.corpusSize.toLocaleString("ru-RU")} предложений, `
+    + `${corpus.bitsPerSentence} бит на предложение`
+  );
+  if (aboutBitsPerSentence) {
+    aboutBitsPerSentence.textContent = String(corpus.bitsPerSentence);
+  }
+  updateGrammarDescription();
+  setCorpusReady(true);
 }
 
 /**
@@ -249,6 +301,20 @@ tabButtons.forEach((button) => {
   });
 });
 
+grammarVersionSelect.addEventListener("change", async () => {
+  showMessage("");
+  grammarVersionSelect.disabled = true;
+  try {
+    await activateGrammarVersion(grammarVersionSelect.value);
+  } catch (error) {
+    corpusStatus.textContent = "Не удалось загрузить корпус";
+    setCorpusReady(false);
+    showMessage(error instanceof Error ? error.message : String(error));
+  } finally {
+    grammarVersionSelect.disabled = false;
+  }
+});
+
 encodeModeInputs.forEach((input) => {
   input.addEventListener("change", () => {
     updateEncodeModePanels();
@@ -269,6 +335,7 @@ encodeButton.addEventListener("click", async () => {
   if (!corpusReady) {
     return;
   }
+  const grammar = requireActiveGrammar();
   showMessage("");
   encodeButton.disabled = true;
   try {
@@ -281,14 +348,14 @@ encodeButton.addEventListener("click", async () => {
     if (encodeMode === "text") {
       const payloadBytes = new TextEncoder().encode(encodeTextInput.value);
       sourceByteCount = payloadBytes.length;
-      coverText = await encodeTextToCoverText(encodeTextInput.value, grammarV9, password);
+      coverText = await encodeTextToCoverText(encodeTextInput.value, grammar, password);
       embeddedBitCount = bytesToBits(await prepareEmbeddedBytes(payloadBytes, password)).length;
     } else if (encodeMode === "bits") {
       const bitString = encodeInput.value.trim();
       if (!bitString || ![...bitString].every((bitCharacter) => bitCharacter === "0" || bitCharacter === "1")) {
         throw new Error("Укажите поток из символов 0 и 1");
       }
-      coverText = await generateText(bitString, grammarV9);
+      coverText = await generateText(bitString, grammar);
       sourceByteCount = Math.floor(bitString.length / 8);
       embeddedBitCount = bitString.length;
     } else {
@@ -298,7 +365,7 @@ encodeButton.addEventListener("click", async () => {
       }
       const payloadBytes = new Uint8Array(await selectedFile.arrayBuffer());
       sourceByteCount = payloadBytes.length;
-      coverText = await encodeBytesToCoverText(payloadBytes, grammarV9, password);
+      coverText = await encodeBytesToCoverText(payloadBytes, grammar, password);
       embeddedBitCount = bytesToBits(await prepareEmbeddedBytes(payloadBytes, password)).length;
     }
 
@@ -326,13 +393,14 @@ decodeButton.addEventListener("click", async () => {
   if (!corpusReady) {
     return;
   }
+  const grammar = requireActiveGrammar();
   showMessage("");
   decodeButton.disabled = true;
   try {
     const password = selectedPassword(decodeUsePassword, decodePassword);
     const { embeddedBits, payloadBytes } = await decodeCoverTextToBytes(
       decodeInput.value,
-      grammarV9,
+      grammar,
       password,
     );
     lastDecodedBits = embeddedBits;
@@ -444,4 +512,9 @@ decodeUsePassword.addEventListener("change", () => {
 updateEncodeModePanels();
 updatePasswordFieldState(encodeUsePassword, encodePassword);
 updatePasswordFieldState(decodeUsePassword, decodePassword);
-loadCorpus();
+populateGrammarVersionSelect();
+activateGrammarVersion(DEFAULT_GRAMMAR_VERSION_ID).catch((error) => {
+  corpusStatus.textContent = "Не удалось загрузить корпус";
+  setCorpusReady(false);
+  showMessage(error instanceof Error ? error.message : String(error));
+});

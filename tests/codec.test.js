@@ -1,14 +1,21 @@
-/** Vitest unit tests for grammar steg v9 JS port. */
+/** Vitest unit tests for grammar steg JS port. */
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import {
+  feistelMixBits,
+  postprocessPayloadBits as feistelPostprocess,
+  preprocessPayloadBits as feistelPreprocess,
+} from "../src/bit-diffusion/feistel.js";
 import { preprocessPayloadBits, postprocessPayloadBits } from "../src/bit-preprocess.js";
 import { generateText, parseText } from "../src/codec.js";
 import { SentenceCorpus } from "../src/corpus.js";
 import { gpgSymmetricDecrypt, gpgSymmetricEncrypt } from "../src/gpg-crypto.js";
+import { GrammarV10 } from "../src/grammar-v10.js";
 import { GrammarV9 } from "../src/grammar-v9.js";
+import { createGrammar } from "../src/grammars.js";
 import {
   createPythonRandom,
   randomFloat,
@@ -21,15 +28,24 @@ import {
 } from "../src/payload-codec.js";
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
-const corpusPath = path.resolve(moduleDirectory, "../../data/corpora/v9/sentences.json");
+const corpusPath = path.resolve(moduleDirectory, "../public/data/corpora/v9/sentences.json");
 
 /**
  * @returns {Promise<GrammarV9>}
  */
-async function loadTestGrammar() {
+async function loadTestGrammarV9() {
   const corpusJson = await readFile(corpusPath, "utf-8");
   const payload = JSON.parse(corpusJson);
   return new GrammarV9(SentenceCorpus.fromJsonPayload(payload));
+}
+
+/**
+ * @returns {Promise<GrammarV10>}
+ */
+async function loadTestGrammarV10() {
+  const corpusJson = await readFile(corpusPath, "utf-8");
+  const payload = JSON.parse(corpusJson);
+  return new GrammarV10(SentenceCorpus.fromJsonPayload(payload));
 }
 
 describe("python-random", () => {
@@ -82,20 +98,68 @@ describe("bit-preprocess", () => {
   });
 });
 
+describe("feistel diffusion", () => {
+  it("preserves bit length", () => {
+    const payloadBits = "1".repeat(23);
+    const encodedBits = feistelMixBits(payloadBits, false);
+    expect(encodedBits.length).toBe(23);
+  });
+
+  it("roundtrips 23-bit payload", async () => {
+    const payloadBits = "1".repeat(22) + "0";
+    expect(await feistelPostprocess(await feistelPreprocess(payloadBits))).toBe(payloadBits);
+  });
+
+  it("creates avalanche between single-bit inputs", () => {
+    const payloadBitsA = "1".repeat(23);
+    const payloadBitsB = "1".repeat(22) + "0";
+    const encodedBitsA = feistelMixBits(payloadBitsA, false);
+    const encodedBitsB = feistelMixBits(payloadBitsB, false);
+    const changedBitCount = [...encodedBitsA].filter(
+      (bitCharacter, bitIndex) => bitCharacter !== encodedBitsB[bitIndex],
+    ).length;
+    expect(changedBitCount).toBeGreaterThanOrEqual(8);
+  });
+});
+
 describe("codec v9", () => {
   it("roundtrips known bit payload", async () => {
-    const grammar = await loadTestGrammar();
+    const grammar = await loadTestGrammarV9();
     const payloadBits = "110010";
     const coverText = await generateText(payloadBits, grammar);
     expect(await parseText(coverText, grammar)).toBe(payloadBits);
   });
 
   it("roundtrips utf-8 text without password", async () => {
-    const grammar = await loadTestGrammar();
+    const grammar = await loadTestGrammarV9();
     const secretText = "Привет";
     const coverText = await encodeTextToCoverText(secretText, grammar);
     const { payloadBytes } = await decodeCoverTextToBytes(coverText, grammar);
     expect(new TextDecoder().decode(payloadBytes)).toBe(secretText);
+  });
+});
+
+describe("codec v10", () => {
+  it("roundtrips known bit payload", async () => {
+    const grammar = await loadTestGrammarV10();
+    const payloadBits = "110010";
+    const coverText = await generateText(payloadBits, grammar);
+    expect(await parseText(coverText, grammar)).toBe(payloadBits);
+  });
+
+  it("roundtrips utf-8 text without password", async () => {
+    const grammar = await loadTestGrammarV10();
+    const secretText = "Привет";
+    const coverText = await encodeTextToCoverText(secretText, grammar);
+    const { payloadBytes } = await decodeCoverTextToBytes(coverText, grammar);
+    expect(new TextDecoder().decode(payloadBytes)).toBe(secretText);
+  });
+});
+
+describe("grammars registry", () => {
+  it("creates latest grammar by default id", () => {
+    const grammar = createGrammar("v10");
+    expect(grammar.versionId).toBe("v10");
   });
 });
 

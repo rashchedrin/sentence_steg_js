@@ -3,7 +3,7 @@
 import { bitsToBytes, bytesToBits } from "./binary-payload.js";
 import { generateText, parseText } from "./codec.js";
 import { gpgSymmetricDecrypt, gpgSymmetricEncrypt } from "./gpg-crypto.js";
-import { GrammarV9 } from "./grammar-v9.js";
+import { GrammarSteg } from "./grammar-base.js";
 
 /**
  * @param {Uint8Array} payloadBytes
@@ -37,7 +37,7 @@ export async function restorePayloadBytes(embeddedBytes, password) {
 
 /**
  * @param {Uint8Array} payloadBytes
- * @param {GrammarV9} grammar
+ * @param {GrammarSteg} grammar
  * @param {string | null} password
  * @returns {Promise<string>}
  */
@@ -49,7 +49,7 @@ export async function encodeBytesToCoverText(payloadBytes, grammar, password = n
 
 /**
  * @param {string} coverText
- * @param {GrammarV9} grammar
+ * @param {GrammarSteg} grammar
  * @param {string | null} password
  * @returns {Promise<{ embeddedBits: string, payloadBytes: Uint8Array }>}
  */
@@ -62,7 +62,7 @@ export async function decodeCoverTextToBytes(coverText, grammar, password = null
 
 /**
  * @param {string} payloadText
- * @param {GrammarV9} grammar
+ * @param {GrammarSteg} grammar
  * @param {string | null} password
  * @returns {Promise<string>}
  */
@@ -73,7 +73,7 @@ export async function encodeTextToCoverText(payloadText, grammar, password = nul
 
 /**
  * @param {string} coverText
- * @param {GrammarV9} grammar
+ * @param {GrammarSteg} grammar
  * @param {string | null} password
  * @returns {Promise<{ embeddedBits: string, payloadBytes: Uint8Array }>}
  */

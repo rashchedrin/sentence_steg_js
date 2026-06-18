@@ -11,6 +11,7 @@
     "test:python": "node tests/python-compat-check.mjs"
   },
   "dependencies": {
+    "@noble/hashes": "^1.8.0",
     "openpgp": "^6.1.1"
   },
   "devDependencies": {
