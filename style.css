@@ -407,6 +407,39 @@ body {
   font-size: 0.9em;
 }
 
+.collision-dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  max-width: 32rem;
+  width: calc(100% - 2rem);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.collision-dialog::backdrop {
+  background: rgba(31, 26, 23, 0.35);
+}
+
+.collision-dialog h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+
+.collision-options {
+  display: grid;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.collision-options label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
 @media (max-width: 640px) {
   .page {
     padding-top: 1rem;

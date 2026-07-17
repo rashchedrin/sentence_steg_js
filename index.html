@@ -86,7 +86,7 @@
           <div class="crypto-control">
             <label class="checkbox-label">
               <input type="checkbox" id="encode-use-password">
-              Зашифровать паролем (GPG)
+              Зашифровать паролем
             </label>
             <label class="label" for="encode-password">Пароль</label>
             <input
@@ -96,6 +96,8 @@
               autocomplete="new-password"
               disabled
             >
+            <label class="label" for="encode-password-crypto-version">Метод шифрования паролем</label>
+            <select id="encode-password-crypto-version" class="select" disabled></select>
           </div>
 
           <div class="crypto-control">
@@ -178,7 +180,7 @@
           <div class="crypto-control">
             <label class="checkbox-label">
               <input type="checkbox" id="decode-use-password">
-              Расшифровать паролем (GPG)
+              Расшифровать паролем
             </label>
             <label class="label" for="decode-password">Пароль</label>
             <input
@@ -188,6 +190,10 @@
               autocomplete="current-password"
               disabled
             >
+            <p class="field-hint">
+              Метод определяется автоматически (пробуются все версии).
+              Спрашивать будем только при крайне редкой коллизии.
+            </p>
           </div>
           <div class="crypto-control">
             <label class="checkbox-label">
@@ -244,10 +250,11 @@
             </li>
             <li>
               <strong>Опциональное шифрование.</strong>
-              Можно зашифровать симметричным паролем (<code>gpg --symmetric</code>)
-              или публичным ключом получателя. В обоих случаях в предложения
-              встраивается компактный <em>бинарный</em> OpenPGP-шифротекст
-              (AES-128, ZIP), без ASCII armor — чтобы не раздувать cover-текст.
+              Можно зашифровать симметричным паролем (по умолчанию
+              <code>gcmwrap</code>: Argon2id + AES-256-GCM, либо устаревший
+              <code>gpg --symmetric</code>) или публичным ключом получателя.
+              В предложения встраивается компактный бинарный шифротекст без ASCII armor.
+              При парольном декодировании версия метода подбирается автоматически.
             </li>
             <li>
               <strong>Перемешивание бит.</strong>
@@ -276,7 +283,8 @@
             строк схлопываются), затем с начала каждого фрагмента ищется самое длинное
             совпадение с предложением из корпуса. Из найденных предложений восстанавливается
             поток бит, снимается маркер конца, выполняется обратное перемешивание.
-            Полученные байты при необходимости расшифровываются паролем GPG,
+            Полученные байты при необходимости расшифровываются паролем
+            (метод подбирается автоматически),
             либо выдаются как <code>-----BEGIN PGP MESSAGE-----</code> для
             вставки в Kleopatra / gpg (асимметричный сценарий).
           </p>
@@ -296,13 +304,27 @@
             <li>Декодирование требует точного совпадения предложений с корпусом: нельзя произвольно переписывать слова.</li>
             <li>Чем больше данных, тем длиннее cover-текст — каждый байт кодируется примерно в одно предложение.</li>
             <li>Стеганография не делает текст «незаметным» для анализа: при подозрении можно проверить статистику или попытаться декодировать.</li>
-            <li>Пароль GPG защищает содержимое, но не скрывает сам факт встраивания данных.</li>
+            <li>Пароль защищает содержимое, но не скрывает сам факт встраивания данных.</li>
           </ul>
         </div>
       </section>
 
       <div id="message" class="message" role="alert" hidden></div>
     </main>
+
+    <dialog id="password-crypto-collision-dialog" class="collision-dialog">
+      <form method="dialog" id="password-crypto-collision-form">
+        <h2>Несколько методов расшифровки сработали</h2>
+        <p class="field-hint">
+          Это крайне редкая коллизия. Выберите, какой результат использовать.
+        </p>
+        <div id="password-crypto-collision-options" class="collision-options"></div>
+        <div class="actions">
+          <button class="button primary" value="ok" id="password-crypto-collision-ok">Использовать</button>
+          <button class="button secondary" value="cancel">Отмена</button>
+        </div>
+      </form>
+    </dialog>
 
     <footer class="footer">
       <p>Все вычисления выполняются локально в браузере. Корпус предложений загружается один раз (~70 МБ).</p>

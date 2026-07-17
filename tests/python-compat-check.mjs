@@ -106,7 +106,10 @@ if (new TextDecoder().decode(jsDecodedPythonPassword.payloadBytes) !== secretTex
   throw new Error("JS decode of Python password-encoded text failed");
 }
 
-const jsEncodedForPython = await encodeTextToCoverText(secretText, grammar, { password: "secret" });
+const jsEncodedForPython = await encodeTextToCoverText(secretText, grammar, {
+  password: "secret",
+  passwordCryptoVersionId: "v1-gpg",
+});
 const pythonDecodedJs = runPython(`
 from grammar_steg.payload_codec import decode_cover_text_to_text
 _, restored = decode_cover_text_to_text(${JSON.stringify(jsEncodedForPython)}, version_id='v9', password='secret')

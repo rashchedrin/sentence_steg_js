@@ -17,6 +17,12 @@ import {
   gpgSymmetricDecrypt,
   gpgSymmetricEncrypt,
 } from "../src/gpg-crypto.js";
+import { gcmwrapEncrypt, gcmwrapTryDecrypt } from "../src/gcmwrap.js";
+import {
+  AmbiguousPasswordDecryptError,
+  decryptWithPassword,
+  encryptWithPassword,
+} from "../src/password-crypto.js";
 import { GrammarV10 } from "../src/grammar-v10.js";
 import { GrammarV9 } from "../src/grammar-v9.js";
 import { createGrammar } from "../src/grammars.js";
@@ -209,5 +215,50 @@ describe("gpg", () => {
 
   it("binaryOpenPgpToArmoredMessage rejects non-OpenPGP bytes", async () => {
     await expect(binaryOpenPgpToArmoredMessage(new TextEncoder().encode("not pgp"))).rejects.toThrow();
+  });
+});
+
+describe("gcmwrap / password crypto", () => {
+  it("roundtrips compressible and incompressible payloads", async () => {
+    const password = "gcmwrap-test";
+    const compressible = new TextEncoder().encode("а".repeat(200));
+    const incompressible = crypto.getRandomValues(new Uint8Array(64));
+    for (const payloadBytes of [compressible, incompressible]) {
+      const sealed = await gcmwrapEncrypt(payloadBytes, password);
+      const restored = await gcmwrapTryDecrypt(sealed, password);
+      expect(restored).toEqual(payloadBytes);
+    }
+  });
+
+  it("rejects wrong password", async () => {
+    const sealed = await gcmwrapEncrypt(new TextEncoder().encode("secret"), "right");
+    expect(await gcmwrapTryDecrypt(sealed, "wrong")).toBeNull();
+  });
+
+  it("auto-decrypts gcmwrap and gpg without knowing the version", async () => {
+    const password = "shared-password";
+    const payloadBytes = new TextEncoder().encode("payload for both");
+    const gcmwrapSealed = await encryptWithPassword(payloadBytes, password, "v2-gcmwrap");
+    const gpgSealed = await encryptWithPassword(payloadBytes, password, "v1-gpg");
+    expect((await decryptWithPassword(gcmwrapSealed, password)).versionId).toBe("v2-gcmwrap");
+    expect((await decryptWithPassword(gpgSealed, password)).versionId).toBe("v1-gpg");
+    expect((await decryptWithPassword(gcmwrapSealed, password)).payloadBytes).toEqual(payloadBytes);
+    expect((await decryptWithPassword(gpgSealed, password)).payloadBytes).toEqual(payloadBytes);
+  });
+
+  it("cover-text roundtrip uses default gcmwrap password crypto", async () => {
+    const grammar = await loadTestGrammarV9();
+    const secretText = "Секрет через gcmwrap";
+    const coverText = await encodeTextToCoverText(secretText, grammar, {
+      password: "cover-pass",
+    });
+    const { payloadBytes } = await decodeCoverTextToBytes(coverText, grammar, {
+      password: "cover-pass",
+    });
+    expect(new TextDecoder().decode(payloadBytes)).toBe(secretText);
+  });
+
+  it("AmbiguousPasswordDecryptError requires at least two candidates", () => {
+    expect(() => new AmbiguousPasswordDecryptError([])).toThrow(/at least 2/);
   });
 });

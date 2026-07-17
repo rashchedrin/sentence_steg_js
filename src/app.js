@@ -1,18 +1,19 @@
 /** Client-side Web UI for grammar steg (no backend). */
 
-import { bytesToBits, bytesToUtf8TextIfValid } from "./binary-payload.js";
-import { generateText } from "./codec.js";
+import { bytesToBits, bytesToUtf8TextIfValid, bitsToBytes } from "./binary-payload.js";
+import { generateText, parseText } from "./codec.js";
 import {
   createGrammar,
   DEFAULT_GRAMMAR_VERSION_ID,
   listGrammarDefinitions,
 } from "./grammars.js";
 import {
+  AmbiguousPasswordDecryptError,
   decodeCoverTextToArmoredPgpMessage,
-  decodeCoverTextToBytes,
   encodeBytesToCoverText,
   encodeTextToCoverText,
   prepareEmbeddedBytes,
+  restorePayloadBytes,
 } from "./payload-codec.js";
 import { readPublicKeyMetadata } from "./gpg-crypto.js";
 import {
@@ -20,6 +21,10 @@ import {
   loadSavedPublicKeys,
   savePublicKey,
 } from "./public-key-store.js";
+import {
+  defaultPasswordCryptoVersionId,
+  listPasswordCryptoVersions,
+} from "./password-crypto.js";
 
 const tabButtons = document.querySelectorAll(".tab");
 const panels = {
@@ -50,6 +55,7 @@ const encodeCopy = document.getElementById("encode-copy");
 const encodeDownload = document.getElementById("encode-download");
 const encodeUsePassword = document.getElementById("encode-use-password");
 const encodePassword = document.getElementById("encode-password");
+const encodePasswordCryptoVersion = document.getElementById("encode-password-crypto-version");
 const encodeUsePublicKey = document.getElementById("encode-use-public-key");
 const encodePublicKey = document.getElementById("encode-public-key");
 const encodeSavedPublicKey = document.getElementById("encode-saved-public-key");
@@ -71,6 +77,11 @@ const decodeDownload = document.getElementById("decode-download");
 const decodeUsePassword = document.getElementById("decode-use-password");
 const decodePassword = document.getElementById("decode-password");
 const decodeAsPgpMessage = document.getElementById("decode-as-pgp-message");
+
+const passwordCryptoCollisionDialog = document.getElementById("password-crypto-collision-dialog");
+const passwordCryptoCollisionForm = document.getElementById("password-crypto-collision-form");
+const passwordCryptoCollisionOptions = document.getElementById("password-crypto-collision-options");
+const passwordCryptoCollisionOk = document.getElementById("password-crypto-collision-ok");
 
 const messageBox = document.getElementById("message");
 
@@ -148,7 +159,9 @@ function selectedEncryptOptions() {
     if (!passwordValue) {
       throw new Error("Укажите пароль");
     }
-    return { password: passwordValue };
+    const passwordCryptoVersionId = encodePasswordCryptoVersion.value
+      || defaultPasswordCryptoVersionId();
+    return { password: passwordValue, passwordCryptoVersionId };
   }
   if (encodeUsePublicKey.checked) {
     const publicKeyArmored = encodePublicKey.value;
@@ -194,6 +207,7 @@ function updatePasswordFieldState(usePasswordInput, passwordInput) {
  */
 function updateEncodeCryptoFieldState() {
   updatePasswordFieldState(encodeUsePassword, encodePassword);
+  encodePasswordCryptoVersion.disabled = !encodeUsePassword.checked;
   const usePublicKey = encodeUsePublicKey.checked;
   encodePublicKey.disabled = !usePublicKey;
   encodeSavedPublicKey.disabled = !usePublicKey;
@@ -206,6 +220,80 @@ function updateEncodeCryptoFieldState() {
     g_publicKeyNameEditedManually = false;
   }
   updateDeletePublicKeyButtonState();
+}
+
+/**
+ * @returns {void}
+ */
+function populatePasswordCryptoVersionSelect() {
+  encodePasswordCryptoVersion.replaceChildren();
+  for (const version of listPasswordCryptoVersions()) {
+    const optionElement = document.createElement("option");
+    optionElement.value = version.versionId;
+    optionElement.textContent = version.displayName;
+    encodePasswordCryptoVersion.appendChild(optionElement);
+  }
+  encodePasswordCryptoVersion.value = defaultPasswordCryptoVersionId();
+}
+
+/**
+ * Ask the user which ambiguous password-decrypt candidate to keep.
+ *
+ * @param {import("./password-crypto.js").PasswordDecryptCandidate[]} candidates
+ * @returns {Promise<Uint8Array | null>}
+ */
+function choosePasswordDecryptCandidate(candidates) {
+  return new Promise((resolve) => {
+    passwordCryptoCollisionOptions.replaceChildren();
+    for (const [candidateIndex, candidate] of candidates.entries()) {
+      const labelElement = document.createElement("label");
+      const radioInput = document.createElement("input");
+      radioInput.type = "radio";
+      radioInput.name = "password-crypto-collision-choice";
+      radioInput.value = String(candidateIndex);
+      radioInput.checked = candidateIndex === 0;
+      const caption = document.createElement("span");
+      caption.textContent = (
+        `${candidate.displayName} `
+        + `(${candidate.payloadBytes.length} байт)`
+      );
+      labelElement.append(radioInput, caption);
+      passwordCryptoCollisionOptions.appendChild(labelElement);
+    }
+
+    /**
+     * @param {Event} event
+     * @returns {void}
+     */
+    function onClose(event) {
+      passwordCryptoCollisionDialog.removeEventListener("close", onClose);
+      if (passwordCryptoCollisionDialog.returnValue !== "ok") {
+        resolve(null);
+        return;
+      }
+      const checked = passwordCryptoCollisionForm.querySelector(
+        'input[name="password-crypto-collision-choice"]:checked',
+      );
+      if (!(checked instanceof HTMLInputElement)) {
+        resolve(null);
+        return;
+      }
+      const candidateIndex = Number.parseInt(checked.value, 10);
+      if (
+        !Number.isInteger(candidateIndex)
+        || candidateIndex < 0
+        || candidateIndex >= candidates.length
+      ) {
+        resolve(null);
+        return;
+      }
+      resolve(candidates[candidateIndex].payloadBytes);
+    }
+
+    passwordCryptoCollisionDialog.addEventListener("close", onClose);
+    passwordCryptoCollisionOk.value = "ok";
+    passwordCryptoCollisionDialog.showModal();
+  });
 }
 
 /**
@@ -548,12 +636,25 @@ decodeButton.addEventListener("click", async () => {
       decodeCopy.hidden = false;
       decodeDownload.hidden = payloadBytes.length === 0;
     } else {
-      const { password } = decryptOptions;
-      const { embeddedBits, payloadBytes } = await decodeCoverTextToBytes(
-        decodeInput.value,
-        grammar,
-        password === undefined ? {} : { password },
-      );
+      const embeddedBits = await parseText(decodeInput.value, grammar);
+      const embeddedBytes = bitsToBytes(embeddedBits);
+      let payloadBytes = embeddedBytes;
+      if (decryptOptions.password !== undefined && decryptOptions.password !== null) {
+        try {
+          payloadBytes = await restorePayloadBytes(embeddedBytes, {
+            password: decryptOptions.password,
+          });
+        } catch (error) {
+          if (!(error instanceof AmbiguousPasswordDecryptError)) {
+            throw error;
+          }
+          const chosenPayloadBytes = await choosePasswordDecryptCandidate(error.candidates);
+          if (chosenPayloadBytes === null) {
+            throw new Error("Расшифровка отменена");
+          }
+          payloadBytes = chosenPayloadBytes;
+        }
+      }
       lastDecodedBits = embeddedBits;
       lastDecodedBytes = payloadBytes;
       decodeOutput.textContent = lastDecodedBits;
@@ -583,6 +684,7 @@ encodeClear.addEventListener("click", () => {
   encodeFileInput.value = "";
   encodeUsePassword.checked = false;
   encodePassword.value = "";
+  encodePasswordCryptoVersion.value = defaultPasswordCryptoVersionId();
   encodeUsePublicKey.checked = false;
   encodePublicKey.value = "";
   encodePublicKeyName.value = "";
@@ -784,6 +886,7 @@ decodeAsPgpMessage.addEventListener("change", () => {
 });
 
 updateEncodeModePanels();
+populatePasswordCryptoVersionSelect();
 updateEncodeCryptoFieldState();
 updateDecodeCryptoFieldState();
 refreshSavedPublicKeyOptions();
