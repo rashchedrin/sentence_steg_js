@@ -122,7 +122,10 @@
         <div class="card">
           <div class="card-header">
             <h2>Русский текст</h2>
-            <button class="button ghost" id="encode-copy" type="button" hidden>Копировать</button>
+            <div class="card-actions">
+              <button class="button ghost" id="encode-download" type="button" hidden>Скачать .txt</button>
+              <button class="button ghost" id="encode-copy" type="button" hidden>Копировать</button>
+            </div>
           </div>
           <p id="encode-stats" class="stats" hidden></p>
           <div id="encode-output" class="output" aria-live="polite"></div>

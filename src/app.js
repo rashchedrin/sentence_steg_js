@@ -41,6 +41,7 @@ const encodeStats = document.getElementById("encode-stats");
 const encodeButton = document.getElementById("encode-button");
 const encodeClear = document.getElementById("encode-clear");
 const encodeCopy = document.getElementById("encode-copy");
+const encodeDownload = document.getElementById("encode-download");
 const encodeUsePassword = document.getElementById("encode-use-password");
 const encodePassword = document.getElementById("encode-password");
 const encodeUsePublicKey = document.getElementById("encode-use-public-key");
@@ -62,6 +63,9 @@ const decodePassword = document.getElementById("decode-password");
 const decodeAsPgpMessage = document.getElementById("decode-as-pgp-message");
 
 const messageBox = document.getElementById("message");
+
+/** @type {string} */
+let lastEncodedCoverText = "";
 
 /** @type {string} */
 let lastDecodedBits = "";
@@ -421,6 +425,7 @@ encodeButton.addEventListener("click", async () => {
       embeddedBitCount = bytesToBits(await prepareEmbeddedBytes(payloadBytes, encryptOptions)).length;
     }
 
+    lastEncodedCoverText = coverText;
     encodeOutput.textContent = coverText || "(пустой текст)";
     const textByteCount = new TextEncoder().encode(coverText).length;
     encodeStats.textContent = formatEncodeStats(
@@ -431,10 +436,13 @@ encodeButton.addEventListener("click", async () => {
     );
     encodeStats.hidden = false;
     encodeCopy.hidden = !coverText;
+    encodeDownload.hidden = !coverText;
   } catch (error) {
+    lastEncodedCoverText = "";
     encodeOutput.textContent = "";
     encodeStats.hidden = true;
     encodeCopy.hidden = true;
+    encodeDownload.hidden = true;
     showMessage(error instanceof Error ? error.message : String(error));
   } finally {
     encodeButton.disabled = !corpusReady;
@@ -503,9 +511,11 @@ encodeClear.addEventListener("click", () => {
   encodePublicKey.value = "";
   updateEncodeCryptoFieldState();
   encodeFileInfo.textContent = "Файл не выбран";
+  lastEncodedCoverText = "";
   encodeOutput.textContent = "";
   encodeStats.hidden = true;
   encodeCopy.hidden = true;
+  encodeDownload.hidden = true;
   showMessage("");
 });
 
@@ -526,7 +536,41 @@ decodeClear.addEventListener("click", () => {
 });
 
 encodeCopy.addEventListener("click", () => {
-  copyText(encodeOutput.textContent, encodeCopy);
+  copyText(lastEncodedCoverText || encodeOutput.textContent, encodeCopy);
+});
+
+/**
+ * @param {string} coverText
+ * @returns {string}
+ */
+function coverTextDownloadFilename(coverText) {
+  const words = coverText.trim().split(/\s+/).filter(Boolean).slice(0, 5);
+  if (!words.length) {
+    throw new Error("expected non-empty cover text for download filename");
+  }
+  const baseName = words
+    .join(" ")
+    .replace(/[\\/:*?"<>|]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!baseName) {
+    throw new Error(`expected usable filename from words ${JSON.stringify(words)}, got empty base name`);
+  }
+  return `${baseName}.txt`;
+}
+
+encodeDownload.addEventListener("click", () => {
+  if (!lastEncodedCoverText) {
+    return;
+  }
+  const objectUrl = URL.createObjectURL(
+    new Blob([lastEncodedCoverText], { type: "text/plain;charset=utf-8" }),
+  );
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = coverTextDownloadFilename(lastEncodedCoverText);
+  link.click();
+  URL.revokeObjectURL(objectUrl);
 });
 
 decodeCopy.addEventListener("click", () => {
