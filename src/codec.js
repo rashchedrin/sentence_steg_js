@@ -1,16 +1,17 @@
 /** Encode and decode bit payloads using a grammar steg version. */
 
-import { BitReader, BitWriter, PAYLOAD_SENTINEL_BIT, decodePayloadFromReconstructed } from "./bit-stream.js";
+import { BitReader, BitWriter, PAYLOAD_SENTINEL_BIT } from "./bit-stream.js";
 import { GrammarSteg } from "./grammar-base.js";
 
 /**
  * @param {BitReader} reader
  * @param {GrammarSteg} grammar
+ * @param {number} coverSentenceIndex
  * @returns {string}
  */
-function generateSentence(reader, grammar) {
+function generateSentence(reader, grammar, coverSentenceIndex) {
   const sentenceIndex = reader.bitsToIndex(grammar.corpusBitsPerSentence());
-  return grammar.sentenceTextForCorpusIndex(sentenceIndex);
+  return grammar.sentenceTextForCorpusIndex(sentenceIndex, coverSentenceIndex);
 }
 
 /**
@@ -27,7 +28,7 @@ export async function generateText(payloadBits, grammar) {
   const reader = new BitReader(encodedBits);
   const sentences = [];
   while (reader.hasExplicitRemaining) {
-    sentences.push(generateSentence(reader, grammar));
+    sentences.push(generateSentence(reader, grammar, sentences.length));
   }
   return grammar.joinCoverSentences(sentences);
 }
@@ -57,11 +58,13 @@ export async function parseText(coverText, grammar) {
     return "";
   }
   const reconstructedBits = reconstructBits(normalizedText, grammar);
-  const processedPayloadBits = decodePayloadFromReconstructed(reconstructedBits);
+  const processedPayloadBits = grammar.decodeReconstructedBits(reconstructedBits);
   const payloadBits = await grammar.postprocessPayloadBits(processedPayloadBits);
-  const regeneratedText = grammar.normalizeCoverText(await generateText(payloadBits, grammar));
-  if (regeneratedText !== normalizedText) {
-    throw new Error("decoded payload does not regenerate cover text");
+  if (grammar.requiresCoverRegenerationValidation()) {
+    const regeneratedText = grammar.normalizeCoverText(await generateText(payloadBits, grammar));
+    if (regeneratedText !== normalizedText) {
+      throw new Error("decoded payload does not regenerate cover text");
+    }
   }
   return payloadBits;
 }

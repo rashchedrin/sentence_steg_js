@@ -16,8 +16,12 @@ import {
 } from "../src/payload-codec.js";
 
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = path.resolve(moduleDirectory, "../..");
-const corpusPath = path.join(projectRoot, "data/corpora/v9/sentences.json");
+const jsProjectRoot = path.resolve(moduleDirectory, "..");
+const pythonProjectRoot = path.resolve(moduleDirectory, "../../grammar_steg");
+const corpusPath = path.join(
+  jsProjectRoot,
+  "public/data/corpora/v9/sentences.json",
+);
 
 /**
  * @param {string} pythonCode
@@ -28,9 +32,9 @@ function runPython(pythonCode) {
     "python3",
     ["-c", pythonCode],
     {
-      cwd: projectRoot,
+      cwd: pythonProjectRoot,
       encoding: "utf-8",
-      env: { ...process.env, PYTHONPATH: path.join(projectRoot, "src") },
+      env: { ...process.env, PYTHONPATH: path.join(pythonProjectRoot, "src") },
     },
   );
   if (result.status !== 0) {

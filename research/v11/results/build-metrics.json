@@ -1,0 +1,50 @@
+{
+  "experiment": "v11-artifact-build",
+  "startedAt": "2026-07-17T20:44:28.980Z",
+  "environment": {
+    "platform": "linux",
+    "architecture": "x64",
+    "nodeVersion": "v22.14.0",
+    "nobleHashesVersion": "^1.8.0",
+    "cpuCount": 8,
+    "nvidiaDriverVersion": "580.159.03",
+    "gpuUsed": false,
+    "vramPeakBytes": 0
+  },
+  "inputs": {
+    "baseCorpusPath": "public/data/corpora/v9/sentences.json",
+    "baseKeyCount": 1048576,
+    "tatoebaTailPath": "research/v11/cache/tatoeba-tail.json",
+    "tatoebaTailCandidateCount": 58851,
+    "mutationCount": 65536,
+    "hashAlgorithm": "SHAKE-256/128",
+    "mphfAlgorithm": "BDZ",
+    "vertexRatio": 1.23
+  },
+  "outputs": {
+    "vertexCount": 1289749,
+    "seed": 33350994,
+    "mphfBytes": 503854,
+    "mphfMiB": 0.4805126190185547,
+    "mphfBitsPerKey": 3.8441009521484375,
+    "encoderMapBytes": 4194320,
+    "extraCandidatesBytes": 12764111,
+    "totalSentenceCandidateCount": 1172963,
+    "extraCandidateCount": 124387,
+    "collisionTargetCount": 116086,
+    "maximumCandidatesPerTarget": 6
+  },
+  "timingMs": {
+    "hash": 18281.817584,
+    "mphfBuild": 668.42348,
+    "mphfVerify": 330.471023,
+    "total": 26676.982407
+  },
+  "memory": {
+    "peakRssBytes": 629706752,
+    "peakRssMiB": 600.53515625,
+    "finalRssBytes": 611921920,
+    "heapUsedBytes": 426332016,
+    "externalBytes": 55190741
+  }
+}

@@ -1,5 +1,6 @@
 /** Registry of grammar steg versions (append new versions to GRAMMAR_DEFINITIONS). */
 
+import { GrammarV11 } from "./grammar-v11.js";
 import { GrammarV10 } from "./grammar-v10.js";
 import { GrammarV9 } from "./grammar-v9.js";
 
@@ -19,6 +20,11 @@ const GRAMMAR_DEFINITIONS = [
     versionId: "v10",
     displayName: "Версия 10 — сеть Фейстеля",
     create: () => new GrammarV10(),
+  },
+  {
+    versionId: "v11",
+    displayName: "Версия 11 — MPHF без membership oracle",
+    create: () => new GrammarV11(),
   },
 ];
 

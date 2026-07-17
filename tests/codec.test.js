@@ -24,6 +24,7 @@ import {
   encryptWithPassword,
 } from "../src/password-crypto.js";
 import { GrammarV10 } from "../src/grammar-v10.js";
+import { GrammarV11, V11Resources } from "../src/grammar-v11.js";
 import { GrammarV9 } from "../src/grammar-v9.js";
 import { createGrammar } from "../src/grammars.js";
 import {
@@ -32,6 +33,9 @@ import {
   shuffleIndices,
 } from "../src/python-random.js";
 import { paragraphLengthForStart } from "../src/paragraph.js";
+import { V11SentenceDecoder, splitV11Sentences } from "../src/v11-decoder.js";
+import { V11EncoderDictionary } from "../src/v11-encoder.js";
+import { V11MphfDecoder } from "../src/v11-mphf.js";
 import {
   decodeCoverTextToArmoredPgpMessage,
   decodeCoverTextToBytes,
@@ -40,6 +44,18 @@ import {
 import * as openpgp from "openpgp";
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const corpusPath = path.resolve(moduleDirectory, "../public/data/corpora/v9/sentences.json");
+const v11MphfPath = path.resolve(
+  moduleDirectory,
+  "../public/data/corpora/v11/decoder-mphf.bin",
+);
+const v11EncoderMapPath = path.resolve(
+  moduleDirectory,
+  "../public/data/corpora/v11/encoder-map.bin",
+);
+const v11ExtraCandidatesPath = path.resolve(
+  moduleDirectory,
+  "../public/data/corpora/v11/extra-candidates.json",
+);
 
 /**
  * @returns {Promise<GrammarV9>}
@@ -57,6 +73,27 @@ async function loadTestGrammarV10() {
   const corpusJson = await readFile(corpusPath, "utf-8");
   const payload = JSON.parse(corpusJson);
   return new GrammarV10(SentenceCorpus.fromJsonPayload(payload));
+}
+
+/**
+ * @returns {Promise<GrammarV11>}
+ */
+async function loadTestGrammarV11() {
+  const [corpusJson, mphfBytes, encoderMapBytes, extraCandidatesJson] = await Promise.all([
+    readFile(corpusPath, "utf-8"),
+    readFile(v11MphfPath),
+    readFile(v11EncoderMapPath),
+    readFile(v11ExtraCandidatesPath, "utf-8"),
+  ]);
+  const encoder = V11EncoderDictionary.fromPayloads(
+    JSON.parse(corpusJson),
+    new Uint8Array(encoderMapBytes),
+    JSON.parse(extraCandidatesJson),
+  );
+  const decoder = new V11SentenceDecoder(
+    V11MphfDecoder.fromBytes(new Uint8Array(mphfBytes)),
+  );
+  return new GrammarV11(new V11Resources(encoder, decoder));
 }
 
 describe("python-random", () => {
@@ -167,10 +204,54 @@ describe("codec v10", () => {
   });
 });
 
+describe("codec v11 MPHF", () => {
+  it("roundtrips bits with independent encoder and decoder", async () => {
+    const grammar = await loadTestGrammarV11();
+    const payloadBits = "10110011100011110000111100001111";
+    const coverText = await generateText(payloadBits, grammar);
+    expect(await parseText(coverText, grammar)).toBe(payloadBits);
+  });
+
+  it("maps base and collision candidates to their declared targets", async () => {
+    const grammar = await loadTestGrammarV11();
+    const resources = grammar.activeCorpus();
+    const extrasPayload = JSON.parse(
+      await readFile(v11ExtraCandidatesPath, "utf-8"),
+    );
+    const [targetIndex, extraSentence] = extrasPayload.candidates[0];
+    expect(resources.decoder.mphfDecoder.indexForSentence(extraSentence)).toBe(targetIndex);
+    const baseSentence = resources.encoder.sentenceForTarget(targetIndex, 0);
+    expect(resources.decoder.mphfDecoder.indexForSentence(baseSentence)).toBe(targetIndex);
+  });
+
+  it("decodes unknown natural text without a membership failure", async () => {
+    const grammar = await loadTestGrammarV11();
+    const arbitraryText = (
+      "Этого предложения заведомо нет в корпусе, но декодер принимает его. "
+      + "Совершенно произвольный второй фрагмент?!"
+    );
+    const splitSentences = splitV11Sentences(arbitraryText);
+    expect(splitSentences).toHaveLength(2);
+    for (const sentence of splitSentences) {
+      const index = grammar.corpusIndexForSentence(sentence);
+      expect(index).toBeGreaterThanOrEqual(0);
+      expect(index).toBeLessThan(2 ** 20);
+    }
+    await expect(parseText(arbitraryText, grammar)).resolves.toMatch(/^[01]*$/);
+  });
+
+  it("treats unterminated arbitrary text as a decodable sentence", async () => {
+    const grammar = await loadTestGrammarV11();
+    const arbitraryText = "произвольный текст вообще без завершающей пунктуации";
+    expect(grammar.splitSentences(arbitraryText)).toEqual([arbitraryText]);
+    await expect(parseText(arbitraryText, grammar)).resolves.toMatch(/^[01]*$/);
+  });
+});
+
 describe("grammars registry", () => {
   it("creates latest grammar by default id", () => {
-    const grammar = createGrammar("v10");
-    expect(grammar.versionId).toBe("v10");
+    const grammar = createGrammar("v11");
+    expect(grammar.versionId).toBe("v11");
   });
 });
 

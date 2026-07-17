@@ -4,7 +4,10 @@ import { xorPermuteDiffusion } from "./bit-diffusion/xor-permute.js";
 import { GrammarSteg } from "./grammar-base.js";
 
 /** @type {string} */
-export const GRAMMAR_V9_CORPUS_URL = `${import.meta.env.BASE_URL}data/corpora/v9/sentences.json`;
+const BASE_URL = import.meta.env?.BASE_URL ?? "/";
+
+/** @type {string} */
+export const GRAMMAR_V9_CORPUS_URL = `${BASE_URL}data/corpora/v9/sentences.json`;
 
 /** @type {string} */
 export const GRAMMAR_V9_ID = "v9";

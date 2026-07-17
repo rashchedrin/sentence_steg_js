@@ -1,6 +1,7 @@
 /** Shared sentence-corpus steganography grammar implementation. */
 
 import { SentenceCorpus } from "./corpus.js";
+import { decodePayloadFromReconstructed } from "./bit-stream.js";
 import { paragraphLengthForStart } from "./paragraph.js";
 import { cleanSentenceSurface } from "./sentence-normalize.js";
 
@@ -104,9 +105,10 @@ export class GrammarSteg {
 
   /**
    * @param {number} sentenceIndex
+   * @param {number} [_coverSentenceIndex]
    * @returns {string}
    */
-  sentenceTextForCorpusIndex(sentenceIndex) {
+  sentenceTextForCorpusIndex(sentenceIndex, _coverSentenceIndex = 0) {
     return this.activeCorpus().sentenceAt(sentenceIndex);
   }
 
@@ -132,6 +134,29 @@ export class GrammarSteg {
    */
   async postprocessPayloadBits(processedPayloadBits) {
     return this._diffusion.postprocess(processedPayloadBits);
+  }
+
+  /**
+   * Decode the sentinel/padding layer from reconstructed sentence bits.
+   *
+   * side-effects: none
+   *
+   * @param {string} reconstructedBits
+   * @returns {string}
+   */
+  decodeReconstructedBits(reconstructedBits) {
+    return decodePayloadFromReconstructed(reconstructedBits);
+  }
+
+  /**
+   * Whether parsing must regenerate exactly the same cover text.
+   *
+   * side-effects: none
+   *
+   * @returns {boolean}
+   */
+  requiresCoverRegenerationValidation() {
+    return true;
   }
 
   /**
