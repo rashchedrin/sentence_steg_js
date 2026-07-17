@@ -87,8 +87,8 @@ if (pythonDecryptedJs !== "Hello") {
 }
 
 const secretText = "Hello secret";
-const coverWithPassword = await encodeTextToCoverText(secretText, grammar, "secret");
-const { payloadBytes } = await decodeCoverTextToBytes(coverWithPassword, grammar, "secret");
+const coverWithPassword = await encodeTextToCoverText(secretText, grammar, { password: "secret" });
+const { payloadBytes } = await decodeCoverTextToBytes(coverWithPassword, grammar, { password: "secret" });
 if (new TextDecoder().decode(payloadBytes) !== secretText) {
   throw new Error("JS password roundtrip failed");
 }
@@ -100,13 +100,13 @@ print(encode_text_to_cover_text('Hello secret', version_id='v9', password='secre
 const jsDecodedPythonPassword = await decodeCoverTextToBytes(
   pythonEncodedCover,
   grammar,
-  "secret",
+  { password: "secret" },
 );
 if (new TextDecoder().decode(jsDecodedPythonPassword.payloadBytes) !== secretText) {
   throw new Error("JS decode of Python password-encoded text failed");
 }
 
-const jsEncodedForPython = await encodeTextToCoverText(secretText, grammar, "secret");
+const jsEncodedForPython = await encodeTextToCoverText(secretText, grammar, { password: "secret" });
 const pythonDecodedJs = runPython(`
 from grammar_steg.payload_codec import decode_cover_text_to_text
 _, restored = decode_cover_text_to_text(${JSON.stringify(jsEncodedForPython)}, version_id='v9', password='secret')

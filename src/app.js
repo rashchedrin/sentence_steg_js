@@ -8,6 +8,7 @@ import {
   listGrammarDefinitions,
 } from "./grammars.js";
 import {
+  decodeCoverTextToArmoredPgpMessage,
   decodeCoverTextToBytes,
   encodeBytesToCoverText,
   encodeTextToCoverText,
@@ -42,9 +43,12 @@ const encodeClear = document.getElementById("encode-clear");
 const encodeCopy = document.getElementById("encode-copy");
 const encodeUsePassword = document.getElementById("encode-use-password");
 const encodePassword = document.getElementById("encode-password");
+const encodeUsePublicKey = document.getElementById("encode-use-public-key");
+const encodePublicKey = document.getElementById("encode-public-key");
 
 const decodeInput = document.getElementById("decode-input");
 const decodeUtf8Section = document.getElementById("decode-utf8-section");
+const decodeTextSectionTitle = document.getElementById("decode-text-section-title");
 const decodeUtf8Output = document.getElementById("decode-utf8-output");
 const decodeOutput = document.getElementById("decode-output");
 const decodeStats = document.getElementById("decode-stats");
@@ -55,6 +59,7 @@ const decodeUtf8Copy = document.getElementById("decode-utf8-copy");
 const decodeDownload = document.getElementById("decode-download");
 const decodeUsePassword = document.getElementById("decode-use-password");
 const decodePassword = document.getElementById("decode-password");
+const decodeAsPgpMessage = document.getElementById("decode-as-pgp-message");
 
 const messageBox = document.getElementById("message");
 
@@ -115,19 +120,44 @@ function updateEncodeModePanels() {
 }
 
 /**
- * @param {HTMLInputElement} usePasswordInput
- * @param {HTMLInputElement} passwordInput
- * @returns {string | null}
+ * @returns {import("./payload-codec.js").PayloadEncryptOptions}
  */
-function selectedPassword(usePasswordInput, passwordInput) {
-  if (!usePasswordInput.checked) {
-    return null;
+function selectedEncryptOptions() {
+  if (encodeUsePassword.checked && encodeUsePublicKey.checked) {
+    throw new Error("Выберите либо пароль, либо публичный ключ — не оба сразу");
   }
-  const passwordValue = passwordInput.value;
-  if (!passwordValue) {
-    throw new Error("Укажите пароль");
+  if (encodeUsePassword.checked) {
+    const passwordValue = encodePassword.value;
+    if (!passwordValue) {
+      throw new Error("Укажите пароль");
+    }
+    return { password: passwordValue };
   }
-  return passwordValue;
+  if (encodeUsePublicKey.checked) {
+    const publicKeyArmored = encodePublicKey.value;
+    if (!publicKeyArmored.trim()) {
+      throw new Error("Вставьте публичный ключ GPG");
+    }
+    return { publicKeyArmored };
+  }
+  return {};
+}
+
+/**
+ * @returns {import("./payload-codec.js").PayloadDecryptOptions & { asPgpMessage: boolean }}
+ */
+function selectedDecryptOptions() {
+  if (decodeUsePassword.checked && decodeAsPgpMessage.checked) {
+    throw new Error("Выберите либо расшифровку паролем, либо вывод как PGP MESSAGE");
+  }
+  if (decodeUsePassword.checked) {
+    const passwordValue = decodePassword.value;
+    if (!passwordValue) {
+      throw new Error("Укажите пароль");
+    }
+    return { password: passwordValue, asPgpMessage: false };
+  }
+  return { asPgpMessage: decodeAsPgpMessage.checked };
 }
 
 /**
@@ -140,6 +170,45 @@ function updatePasswordFieldState(usePasswordInput, passwordInput) {
   if (!usePasswordInput.checked) {
     passwordInput.value = "";
   }
+}
+
+/**
+ * @returns {void}
+ */
+function updateEncodeCryptoFieldState() {
+  updatePasswordFieldState(encodeUsePassword, encodePassword);
+  encodePublicKey.disabled = !encodeUsePublicKey.checked;
+  if (!encodeUsePublicKey.checked) {
+    encodePublicKey.value = "";
+  }
+}
+
+/**
+ * @returns {void}
+ */
+function updateDecodeCryptoFieldState() {
+  updatePasswordFieldState(decodeUsePassword, decodePassword);
+}
+
+/**
+ * @param {string | null} textValue
+ * @param {string} [sectionTitle]
+ * @returns {void}
+ */
+function setDecodeTextOutput(textValue, sectionTitle = "UTF-8 текст") {
+  lastDecodedUtf8Text = textValue;
+  if (decodeTextSectionTitle) {
+    decodeTextSectionTitle.textContent = sectionTitle;
+  }
+  if (textValue === null) {
+    decodeUtf8Section.hidden = true;
+    decodeUtf8Output.textContent = "";
+    decodeUtf8Copy.hidden = true;
+    return;
+  }
+  decodeUtf8Section.hidden = false;
+  decodeUtf8Output.textContent = textValue === "" ? "(пустой текст)" : textValue;
+  decodeUtf8Copy.hidden = false;
 }
 
 /**
@@ -170,23 +239,6 @@ function formatEncodeStats(bitCount, byteCount, textByteCount, sizeExpansion) {
  */
 function formatDecodeStats(bitCount, byteCount) {
   return `${bitCount} бит, ${byteCount} байт`;
-}
-
-/**
- * @param {string | null} utf8Text
- * @returns {void}
- */
-function setDecodeUtf8Output(utf8Text) {
-  lastDecodedUtf8Text = utf8Text;
-  if (utf8Text === null) {
-    decodeUtf8Section.hidden = true;
-    decodeUtf8Output.textContent = "";
-    decodeUtf8Copy.hidden = true;
-    return;
-  }
-  decodeUtf8Section.hidden = false;
-  decodeUtf8Output.textContent = utf8Text === "" ? "(пустой текст)" : utf8Text;
-  decodeUtf8Copy.hidden = false;
 }
 
 /**
@@ -339,7 +391,7 @@ encodeButton.addEventListener("click", async () => {
   showMessage("");
   encodeButton.disabled = true;
   try {
-    const password = selectedPassword(encodeUsePassword, encodePassword);
+    const encryptOptions = selectedEncryptOptions();
     const encodeMode = selectedEncodeMode();
     let coverText = "";
     let sourceByteCount = 0;
@@ -348,8 +400,8 @@ encodeButton.addEventListener("click", async () => {
     if (encodeMode === "text") {
       const payloadBytes = new TextEncoder().encode(encodeTextInput.value);
       sourceByteCount = payloadBytes.length;
-      coverText = await encodeTextToCoverText(encodeTextInput.value, grammar, password);
-      embeddedBitCount = bytesToBits(await prepareEmbeddedBytes(payloadBytes, password)).length;
+      coverText = await encodeTextToCoverText(encodeTextInput.value, grammar, encryptOptions);
+      embeddedBitCount = bytesToBits(await prepareEmbeddedBytes(payloadBytes, encryptOptions)).length;
     } else if (encodeMode === "bits") {
       const bitString = encodeInput.value.trim();
       if (!bitString || ![...bitString].every((bitCharacter) => bitCharacter === "0" || bitCharacter === "1")) {
@@ -365,8 +417,8 @@ encodeButton.addEventListener("click", async () => {
       }
       const payloadBytes = new Uint8Array(await selectedFile.arrayBuffer());
       sourceByteCount = payloadBytes.length;
-      coverText = await encodeBytesToCoverText(payloadBytes, grammar, password);
-      embeddedBitCount = bytesToBits(await prepareEmbeddedBytes(payloadBytes, password)).length;
+      coverText = await encodeBytesToCoverText(payloadBytes, grammar, encryptOptions);
+      embeddedBitCount = bytesToBits(await prepareEmbeddedBytes(payloadBytes, encryptOptions)).length;
     }
 
     encodeOutput.textContent = coverText || "(пустой текст)";
@@ -397,24 +449,40 @@ decodeButton.addEventListener("click", async () => {
   showMessage("");
   decodeButton.disabled = true;
   try {
-    const password = selectedPassword(decodeUsePassword, decodePassword);
-    const { embeddedBits, payloadBytes } = await decodeCoverTextToBytes(
-      decodeInput.value,
-      grammar,
-      password,
-    );
-    lastDecodedBits = embeddedBits;
-    lastDecodedBytes = payloadBytes;
-    decodeOutput.textContent = lastDecodedBits;
-    setDecodeUtf8Output(bytesToUtf8TextIfValid(payloadBytes));
-    decodeStats.textContent = formatDecodeStats(embeddedBits.length, payloadBytes.length);
-    decodeStats.hidden = false;
-    decodeCopy.hidden = false;
-    decodeDownload.hidden = payloadBytes.length === 0;
+    const decryptOptions = selectedDecryptOptions();
+    if (decryptOptions.asPgpMessage) {
+      const { embeddedBits, payloadBytes, armoredPgpMessage } = await decodeCoverTextToArmoredPgpMessage(
+        decodeInput.value,
+        grammar,
+      );
+      lastDecodedBits = embeddedBits;
+      lastDecodedBytes = payloadBytes;
+      decodeOutput.textContent = lastDecodedBits;
+      setDecodeTextOutput(armoredPgpMessage, "PGP MESSAGE (для Kleopatra / gpg)");
+      decodeStats.textContent = formatDecodeStats(embeddedBits.length, payloadBytes.length);
+      decodeStats.hidden = false;
+      decodeCopy.hidden = false;
+      decodeDownload.hidden = payloadBytes.length === 0;
+    } else {
+      const { password } = decryptOptions;
+      const { embeddedBits, payloadBytes } = await decodeCoverTextToBytes(
+        decodeInput.value,
+        grammar,
+        password === undefined ? {} : { password },
+      );
+      lastDecodedBits = embeddedBits;
+      lastDecodedBytes = payloadBytes;
+      decodeOutput.textContent = lastDecodedBits;
+      setDecodeTextOutput(bytesToUtf8TextIfValid(payloadBytes));
+      decodeStats.textContent = formatDecodeStats(embeddedBits.length, payloadBytes.length);
+      decodeStats.hidden = false;
+      decodeCopy.hidden = false;
+      decodeDownload.hidden = payloadBytes.length === 0;
+    }
   } catch (error) {
     lastDecodedBits = "";
     lastDecodedBytes = null;
-    setDecodeUtf8Output(null);
+    setDecodeTextOutput(null);
     decodeOutput.textContent = "";
     decodeStats.hidden = true;
     decodeCopy.hidden = true;
@@ -431,7 +499,9 @@ encodeClear.addEventListener("click", () => {
   encodeFileInput.value = "";
   encodeUsePassword.checked = false;
   encodePassword.value = "";
-  updatePasswordFieldState(encodeUsePassword, encodePassword);
+  encodeUsePublicKey.checked = false;
+  encodePublicKey.value = "";
+  updateEncodeCryptoFieldState();
   encodeFileInfo.textContent = "Файл не выбран";
   encodeOutput.textContent = "";
   encodeStats.hidden = true;
@@ -443,9 +513,10 @@ decodeClear.addEventListener("click", () => {
   decodeInput.value = "";
   decodeUsePassword.checked = false;
   decodePassword.value = "";
-  updatePasswordFieldState(decodeUsePassword, decodePassword);
+  decodeAsPgpMessage.checked = false;
+  updateDecodeCryptoFieldState();
   decodeOutput.textContent = "";
-  setDecodeUtf8Output(null);
+  setDecodeTextOutput(null);
   decodeStats.hidden = true;
   decodeCopy.hidden = true;
   decodeDownload.hidden = true;
@@ -500,18 +571,40 @@ decodeInput.addEventListener("keydown", (event) => {
 });
 
 encodeUsePassword.addEventListener("change", () => {
-  updatePasswordFieldState(encodeUsePassword, encodePassword);
+  if (encodeUsePassword.checked) {
+    encodeUsePublicKey.checked = false;
+  }
+  updateEncodeCryptoFieldState();
+  showMessage("");
+});
+
+encodeUsePublicKey.addEventListener("change", () => {
+  if (encodeUsePublicKey.checked) {
+    encodeUsePassword.checked = false;
+  }
+  updateEncodeCryptoFieldState();
   showMessage("");
 });
 
 decodeUsePassword.addEventListener("change", () => {
-  updatePasswordFieldState(decodeUsePassword, decodePassword);
+  if (decodeUsePassword.checked) {
+    decodeAsPgpMessage.checked = false;
+  }
+  updateDecodeCryptoFieldState();
+  showMessage("");
+});
+
+decodeAsPgpMessage.addEventListener("change", () => {
+  if (decodeAsPgpMessage.checked) {
+    decodeUsePassword.checked = false;
+  }
+  updateDecodeCryptoFieldState();
   showMessage("");
 });
 
 updateEncodeModePanels();
-updatePasswordFieldState(encodeUsePassword, encodePassword);
-updatePasswordFieldState(decodeUsePassword, decodePassword);
+updateEncodeCryptoFieldState();
+updateDecodeCryptoFieldState();
 populateGrammarVersionSelect();
 activateGrammarVersion(DEFAULT_GRAMMAR_VERSION_ID).catch((error) => {
   corpusStatus.textContent = "Не удалось загрузить корпус";

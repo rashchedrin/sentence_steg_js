@@ -12,7 +12,11 @@ import {
 import { preprocessPayloadBits, postprocessPayloadBits } from "../src/bit-preprocess.js";
 import { generateText, parseText } from "../src/codec.js";
 import { SentenceCorpus } from "../src/corpus.js";
-import { gpgSymmetricDecrypt, gpgSymmetricEncrypt } from "../src/gpg-crypto.js";
+import {
+  binaryOpenPgpToArmoredMessage,
+  gpgSymmetricDecrypt,
+  gpgSymmetricEncrypt,
+} from "../src/gpg-crypto.js";
 import { GrammarV10 } from "../src/grammar-v10.js";
 import { GrammarV9 } from "../src/grammar-v9.js";
 import { createGrammar } from "../src/grammars.js";
@@ -23,10 +27,11 @@ import {
 } from "../src/python-random.js";
 import { paragraphLengthForStart } from "../src/paragraph.js";
 import {
-  encodeTextToCoverText,
+  decodeCoverTextToArmoredPgpMessage,
   decodeCoverTextToBytes,
+  encodeTextToCoverText,
 } from "../src/payload-codec.js";
-
+import * as openpgp from "openpgp";
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const corpusPath = path.resolve(moduleDirectory, "../public/data/corpora/v9/sentences.json");
 
@@ -170,5 +175,39 @@ describe("gpg", () => {
     const ciphertextBytes = await gpgSymmetricEncrypt(payloadBytes, password);
     const restoredBytes = await gpgSymmetricDecrypt(ciphertextBytes, password);
     expect(restoredBytes).toEqual(payloadBytes);
+  });
+
+  it("public-key encrypt embeds binary and decode yields armored PGP MESSAGE", async () => {
+    const grammar = await loadTestGrammarV9();
+    const { privateKey, publicKey } = await openpgp.generateKey({
+      type: "ecc",
+      curve: "curve25519",
+      userIDs: [{ name: "Steg Test", email: "steg@example.com" }],
+      format: "armored",
+    });
+    const secretText = "Секрет для Kleopatra";
+    const coverText = await encodeTextToCoverText(secretText, grammar, {
+      publicKeyArmored: publicKey,
+    });
+    const { armoredPgpMessage, payloadBytes } = await decodeCoverTextToArmoredPgpMessage(
+      coverText,
+      grammar,
+    );
+    expect(armoredPgpMessage).toContain("-----BEGIN PGP MESSAGE-----");
+    expect(armoredPgpMessage).toContain("-----END PGP MESSAGE-----");
+    expect(armoredPgpMessage).toMatch(/=[A-Za-z0-9+/]{4}\r?\n-----END PGP MESSAGE-----/);
+
+    const message = await openpgp.readMessage({ armoredMessage: armoredPgpMessage });
+    const decryptionKey = await openpgp.readPrivateKey({ armoredKey: privateKey });
+    const { data } = await openpgp.decrypt({
+      message,
+      decryptionKeys: decryptionKey,
+      format: "binary",
+    });
+    expect(new TextDecoder().decode(data)).toBe(secretText);
+  });
+
+  it("binaryOpenPgpToArmoredMessage rejects non-OpenPGP bytes", async () => {
+    await expect(binaryOpenPgpToArmoredMessage(new TextEncoder().encode("not pgp"))).rejects.toThrow();
   });
 });

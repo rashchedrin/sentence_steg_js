@@ -83,7 +83,7 @@
             <p id="encode-file-info" class="file-info">Файл не выбран</p>
           </div>
 
-          <div class="password-control">
+          <div class="crypto-control">
             <label class="checkbox-label">
               <input type="checkbox" id="encode-use-password">
               Зашифровать паролем (GPG)
@@ -96,6 +96,22 @@
               autocomplete="new-password"
               disabled
             >
+          </div>
+
+          <div class="crypto-control">
+            <label class="checkbox-label">
+              <input type="checkbox" id="encode-use-public-key">
+              Зашифровать публичным ключом GPG
+            </label>
+            <label class="label" for="encode-public-key">Публичный ключ (ASCII armor)</label>
+            <textarea
+              id="encode-public-key"
+              class="textarea textarea-mono"
+              rows="6"
+              placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----&#10;...&#10;-----END PGP PUBLIC KEY BLOCK-----"
+              spellcheck="false"
+              disabled
+            ></textarea>
           </div>
 
           <div class="actions">
@@ -123,7 +139,7 @@
             placeholder="кот спит. большой дом стоит."
             spellcheck="false"
           ></textarea>
-          <div class="password-control">
+          <div class="crypto-control">
             <label class="checkbox-label">
               <input type="checkbox" id="decode-use-password">
               Расшифровать паролем (GPG)
@@ -136,6 +152,16 @@
               autocomplete="current-password"
               disabled
             >
+          </div>
+          <div class="crypto-control">
+            <label class="checkbox-label">
+              <input type="checkbox" id="decode-as-pgp-message">
+              Как асимметричный PGP (выдать BEGIN PGP MESSAGE)
+            </label>
+            <p class="field-hint">
+              Извлечёт бинарный OpenPGP-шифротекст и покажет его в ASCII armor —
+              можно вставить в Kleopatra / gpg для расшифровки приватным ключом.
+            </p>
           </div>
           <div class="actions">
             <button class="button primary" id="decode-button" type="button" disabled>Извлечь биты</button>
@@ -153,7 +179,7 @@
           </div>
           <p id="decode-stats" class="stats" hidden></p>
           <div id="decode-utf8-section" class="decode-section" hidden>
-            <h3 class="decode-section-title">UTF-8 текст</h3>
+            <h3 id="decode-text-section-title" class="decode-section-title">UTF-8 текст</h3>
             <div id="decode-utf8-output" class="output" aria-live="polite"></div>
           </div>
           <div class="decode-section">
@@ -182,9 +208,10 @@
             </li>
             <li>
               <strong>Опциональное шифрование.</strong>
-              Если указан пароль, байты сначала шифруются симметричным GPG:
-              AES-128, сжатие ZIP, бинарный формат OpenPGP — тот же режим, что у
-              <code>gpg --symmetric</code>.
+              Можно зашифровать симметричным паролем (<code>gpg --symmetric</code>)
+              или публичным ключом получателя. В обоих случаях в предложения
+              встраивается компактный <em>бинарный</em> OpenPGP-шифротекст
+              (AES-128, ZIP), без ASCII armor — чтобы не раздувать cover-текст.
             </li>
             <li>
               <strong>Перемешивание бит.</strong>
@@ -213,7 +240,9 @@
             строк схлопываются), затем с начала каждого фрагмента ищется самое длинное
             совпадение с предложением из корпуса. Из найденных предложений восстанавливается
             поток бит, снимается маркер конца, выполняется обратное перемешивание.
-            Полученные байты при необходимости расшифровываются тем же паролем GPG.
+            Полученные байты при необходимости расшифровываются паролем GPG,
+            либо выдаются как <code>-----BEGIN PGP MESSAGE-----</code> для
+            вставки в Kleopatra / gpg (асимметричный сценарий).
           </p>
 
           <h2>Корпус предложений</h2>
