@@ -103,6 +103,21 @@
               <input type="checkbox" id="encode-use-public-key">
               Зашифровать публичным ключом GPG
             </label>
+
+            <label class="label" for="encode-saved-public-key">Сохранённый ключ</label>
+            <div class="key-picker">
+              <select id="encode-saved-public-key" class="select" disabled>
+                <option value="">— вставить новый ключ —</option>
+              </select>
+              <button
+                class="button secondary"
+                id="encode-delete-public-key"
+                type="button"
+                disabled
+                hidden
+              >Удалить</button>
+            </div>
+
             <label class="label" for="encode-public-key">Публичный ключ (ASCII armor)</label>
             <textarea
               id="encode-public-key"
@@ -112,6 +127,24 @@
               spellcheck="false"
               disabled
             ></textarea>
+
+            <label class="label" for="encode-public-key-name">Имя ключа</label>
+            <div class="key-picker">
+              <input
+                id="encode-public-key-name"
+                class="text-input"
+                type="text"
+                placeholder="Имя из ключа подставится автоматически"
+                autocomplete="off"
+                disabled
+              >
+              <button
+                class="button secondary"
+                id="encode-save-public-key"
+                type="button"
+                disabled
+              >Сохранить публичный ключ в браузере</button>
+            </div>
           </div>
 
           <div class="actions">

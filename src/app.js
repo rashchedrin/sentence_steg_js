@@ -14,6 +14,12 @@ import {
   encodeTextToCoverText,
   prepareEmbeddedBytes,
 } from "./payload-codec.js";
+import { readPublicKeyMetadata } from "./gpg-crypto.js";
+import {
+  deletePublicKey,
+  loadSavedPublicKeys,
+  savePublicKey,
+} from "./public-key-store.js";
 
 const tabButtons = document.querySelectorAll(".tab");
 const panels = {
@@ -46,6 +52,10 @@ const encodeUsePassword = document.getElementById("encode-use-password");
 const encodePassword = document.getElementById("encode-password");
 const encodeUsePublicKey = document.getElementById("encode-use-public-key");
 const encodePublicKey = document.getElementById("encode-public-key");
+const encodeSavedPublicKey = document.getElementById("encode-saved-public-key");
+const encodeDeletePublicKey = document.getElementById("encode-delete-public-key");
+const encodePublicKeyName = document.getElementById("encode-public-key-name");
+const encodeSavePublicKey = document.getElementById("encode-save-public-key");
 
 const decodeInput = document.getElementById("decode-input");
 const decodeUtf8Section = document.getElementById("decode-utf8-section");
@@ -63,6 +73,9 @@ const decodePassword = document.getElementById("decode-password");
 const decodeAsPgpMessage = document.getElementById("decode-as-pgp-message");
 
 const messageBox = document.getElementById("message");
+
+/** @type {boolean} Whether the user typed a custom key name (suppresses auto-fill). */
+let g_publicKeyNameEditedManually = false;
 
 /** @type {string} */
 let lastEncodedCoverText = "";
@@ -181,9 +194,72 @@ function updatePasswordFieldState(usePasswordInput, passwordInput) {
  */
 function updateEncodeCryptoFieldState() {
   updatePasswordFieldState(encodeUsePassword, encodePassword);
-  encodePublicKey.disabled = !encodeUsePublicKey.checked;
-  if (!encodeUsePublicKey.checked) {
+  const usePublicKey = encodeUsePublicKey.checked;
+  encodePublicKey.disabled = !usePublicKey;
+  encodeSavedPublicKey.disabled = !usePublicKey;
+  encodePublicKeyName.disabled = !usePublicKey;
+  encodeSavePublicKey.disabled = !usePublicKey;
+  if (!usePublicKey) {
     encodePublicKey.value = "";
+    encodePublicKeyName.value = "";
+    encodeSavedPublicKey.value = "";
+    g_publicKeyNameEditedManually = false;
+  }
+  updateDeletePublicKeyButtonState();
+}
+
+/**
+ * @returns {void}
+ */
+function updateDeletePublicKeyButtonState() {
+  const hasSelection = Boolean(encodeSavedPublicKey.value);
+  encodeDeletePublicKey.hidden = !hasSelection;
+  encodeDeletePublicKey.disabled = !hasSelection || !encodeUsePublicKey.checked;
+}
+
+/**
+ * Refresh the saved-key combo box options from storage.
+ *
+ * @param {string} [selectedName]
+ * @returns {void}
+ */
+function refreshSavedPublicKeyOptions(selectedName = "") {
+  const savedPublicKeys = loadSavedPublicKeys();
+  while (encodeSavedPublicKey.options.length > 1) {
+    encodeSavedPublicKey.remove(1);
+  }
+  for (const savedPublicKey of savedPublicKeys) {
+    const optionElement = document.createElement("option");
+    optionElement.value = savedPublicKey.name;
+    optionElement.textContent = savedPublicKey.name;
+    encodeSavedPublicKey.appendChild(optionElement);
+  }
+  const hasSelected = savedPublicKeys.some((entry) => entry.name === selectedName);
+  encodeSavedPublicKey.value = hasSelected ? selectedName : "";
+  updateDeletePublicKeyButtonState();
+}
+
+/**
+ * Fill the name field with the key's default name unless the user edited it.
+ *
+ * @returns {Promise<void>}
+ */
+async function autofillPublicKeyName() {
+  if (g_publicKeyNameEditedManually) {
+    return;
+  }
+  const publicKeyArmored = encodePublicKey.value.trim();
+  if (!publicKeyArmored) {
+    encodePublicKeyName.value = "";
+    return;
+  }
+  try {
+    const { defaultName } = await readPublicKeyMetadata(publicKeyArmored);
+    if (!g_publicKeyNameEditedManually) {
+      encodePublicKeyName.value = defaultName;
+    }
+  } catch {
+    // Invalid/incomplete key: leave the name empty, validation happens on save/encode.
   }
 }
 
@@ -509,6 +585,9 @@ encodeClear.addEventListener("click", () => {
   encodePassword.value = "";
   encodeUsePublicKey.checked = false;
   encodePublicKey.value = "";
+  encodePublicKeyName.value = "";
+  encodeSavedPublicKey.value = "";
+  g_publicKeyNameEditedManually = false;
   updateEncodeCryptoFieldState();
   encodeFileInfo.textContent = "Файл не выбран";
   lastEncodedCoverText = "";
@@ -630,6 +709,64 @@ encodeUsePublicKey.addEventListener("change", () => {
   showMessage("");
 });
 
+encodeSavedPublicKey.addEventListener("change", () => {
+  showMessage("");
+  const selectedName = encodeSavedPublicKey.value;
+  if (!selectedName) {
+    updateDeletePublicKeyButtonState();
+    return;
+  }
+  const savedPublicKey = loadSavedPublicKeys().find((entry) => entry.name === selectedName);
+  if (!savedPublicKey) {
+    refreshSavedPublicKeyOptions("");
+    return;
+  }
+  encodePublicKey.value = savedPublicKey.armored;
+  encodePublicKeyName.value = savedPublicKey.name;
+  g_publicKeyNameEditedManually = true;
+  updateDeletePublicKeyButtonState();
+});
+
+encodePublicKey.addEventListener("input", () => {
+  encodeSavedPublicKey.value = "";
+  updateDeletePublicKeyButtonState();
+  autofillPublicKeyName();
+});
+
+encodePublicKeyName.addEventListener("input", () => {
+  g_publicKeyNameEditedManually = encodePublicKeyName.value.trim().length > 0;
+});
+
+encodeSavePublicKey.addEventListener("click", async () => {
+  showMessage("");
+  try {
+    const publicKeyArmored = encodePublicKey.value.trim();
+    if (!publicKeyArmored) {
+      throw new Error("Вставьте публичный ключ GPG");
+    }
+    const { fingerprint, defaultName } = await readPublicKeyMetadata(publicKeyArmored);
+    const keyName = encodePublicKeyName.value.trim() || defaultName;
+    savePublicKey({ name: keyName, armored: publicKeyArmored, fingerprint });
+    refreshSavedPublicKeyOptions(keyName);
+    encodePublicKeyName.value = keyName;
+    g_publicKeyNameEditedManually = true;
+    showMessage(`Публичный ключ сохранён в браузере: ${keyName}`);
+  } catch (error) {
+    showMessage(error instanceof Error ? error.message : String(error));
+  }
+});
+
+encodeDeletePublicKey.addEventListener("click", () => {
+  showMessage("");
+  const selectedName = encodeSavedPublicKey.value;
+  if (!selectedName) {
+    return;
+  }
+  deletePublicKey(selectedName);
+  refreshSavedPublicKeyOptions("");
+  showMessage(`Ключ удалён из браузера: ${selectedName}`);
+});
+
 decodeUsePassword.addEventListener("change", () => {
   if (decodeUsePassword.checked) {
     decodeAsPgpMessage.checked = false;
@@ -649,6 +786,7 @@ decodeAsPgpMessage.addEventListener("change", () => {
 updateEncodeModePanels();
 updateEncodeCryptoFieldState();
 updateDecodeCryptoFieldState();
+refreshSavedPublicKeyOptions();
 populateGrammarVersionSelect();
 activateGrammarVersion(DEFAULT_GRAMMAR_VERSION_ID).catch((error) => {
   corpusStatus.textContent = "Не удалось загрузить корпус";

@@ -158,6 +158,24 @@ body {
   flex-wrap: wrap;
 }
 
+.key-picker {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+}
+
+.key-picker .select,
+.key-picker .text-input {
+  flex: 1 1 16rem;
+  margin-top: 0;
+}
+
+.key-picker .button {
+  flex: 0 0 auto;
+}
+
 .input-mode {
   display: flex;
   gap: 1rem;

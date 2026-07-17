@@ -78,6 +78,30 @@ export async function gpgPublicKeyEncrypt(payloadBytes, publicKeyArmored) {
 }
 
 /**
+ * Read the primary user ID and fingerprint of an armored public key.
+ *
+ * @param {string} publicKeyArmored
+ * @returns {Promise<{ userId: string, fingerprint: string, defaultName: string }>}
+ */
+export async function readPublicKeyMetadata(publicKeyArmored) {
+  if (!publicKeyArmored.trim()) {
+    throw new Error("expected non-empty public key, got empty string");
+  }
+  const publicKey = await openpgp.readKey({ armoredKey: publicKeyArmored });
+  const fingerprint = publicKey.getFingerprint();
+  let userId = "";
+  try {
+    const primaryUser = await publicKey.getPrimaryUser();
+    userId = primaryUser.user.userID ? primaryUser.user.userID.userID : "";
+  } catch {
+    userId = "";
+  }
+  const shortFingerprint = fingerprint.slice(-8).toUpperCase();
+  const defaultName = userId ? `${userId} (${shortFingerprint})` : shortFingerprint;
+  return { userId, fingerprint, defaultName };
+}
+
+/**
  * Wrap binary OpenPGP ciphertext as ASCII-armored ``PGP MESSAGE`` for Kleopatra/gpg.
  *
  * Embeds the compact binary form in cover text; armor is only for paste/export.
