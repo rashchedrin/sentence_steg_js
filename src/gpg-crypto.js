@@ -1,12 +1,55 @@
-/** OpenPGP encryption compatible with system gpg (AES128 + ZIP). */
+/** OpenPGP encryption compatible with system gpg (AES128, adaptive ZIP). */
 
 import * as openpgp from "openpgp";
 
-const GPG_BINARY_CONFIG = {
-  preferredSymmetricAlgorithm: openpgp.enums.symmetric.aes128,
-  preferredCompressionAlgorithm: openpgp.enums.compression.zip,
-  aeadProtect: false,
-};
+const GPG_COMPRESSION_CONFIGS = [
+  {
+    preferredSymmetricAlgorithm: openpgp.enums.symmetric.aes128,
+    preferredCompressionAlgorithm: openpgp.enums.compression.zip,
+    aeadProtect: false,
+  },
+  {
+    preferredSymmetricAlgorithm: openpgp.enums.symmetric.aes128,
+    preferredCompressionAlgorithm: openpgp.enums.compression.uncompressed,
+    aeadProtect: false,
+  },
+];
+
+/**
+ * Encrypt payload both with ZIP compression and uncompressed, return the
+ * smaller binary ciphertext. Both variants decrypt identically in gpg,
+ * so no flag needs to be stored.
+ *
+ * @param {Uint8Array} payloadBytes shape (payloadLength,)
+ * @param {object} recipientOptions openpgp.encrypt options selecting the recipient
+ *   (either `passwords` or `encryptionKeys`)
+ * @returns {Promise<Uint8Array>} shape (ciphertextLength,)
+ */
+async function gpgEncryptSmallest(payloadBytes, recipientOptions) {
+  /** @type {Uint8Array | null} */
+  let smallestCiphertext = null;
+  for (const compressionConfig of GPG_COMPRESSION_CONFIGS) {
+    const message = await openpgp.createMessage({ binary: payloadBytes });
+    const encrypted = await openpgp.encrypt({
+      message,
+      ...recipientOptions,
+      format: "binary",
+      config: compressionConfig,
+    });
+    if (!(encrypted instanceof Uint8Array)) {
+      throw new Error(
+        `expected Uint8Array from openpgp.encrypt, got ${Object.prototype.toString.call(encrypted)}`,
+      );
+    }
+    if (smallestCiphertext === null || encrypted.length < smallestCiphertext.length) {
+      smallestCiphertext = encrypted;
+    }
+  }
+  if (smallestCiphertext === null) {
+    throw new Error("expected at least one encryption candidate, got none");
+  }
+  return smallestCiphertext;
+}
 
 /**
  * @param {Uint8Array} payloadBytes
@@ -17,17 +60,7 @@ export async function gpgSymmetricEncrypt(payloadBytes, password) {
   if (!password) {
     throw new Error("expected non-empty password, got empty string");
   }
-  const message = await openpgp.createMessage({ binary: payloadBytes });
-  const encrypted = await openpgp.encrypt({
-    message,
-    passwords: [password],
-    format: "binary",
-    config: GPG_BINARY_CONFIG,
-  });
-  if (encrypted instanceof Uint8Array) {
-    return encrypted;
-  }
-  throw new Error("expected binary OpenPGP output from encrypt");
+  return gpgEncryptSmallest(payloadBytes, { passwords: [password] });
 }
 
 /**
@@ -64,17 +97,7 @@ export async function gpgPublicKeyEncrypt(payloadBytes, publicKeyArmored) {
     throw new Error("expected non-empty public key, got empty string");
   }
   const publicKey = await openpgp.readKey({ armoredKey: publicKeyArmored });
-  const message = await openpgp.createMessage({ binary: payloadBytes });
-  const encrypted = await openpgp.encrypt({
-    message,
-    encryptionKeys: publicKey,
-    format: "binary",
-    config: GPG_BINARY_CONFIG,
-  });
-  if (encrypted instanceof Uint8Array) {
-    return encrypted;
-  }
-  throw new Error("expected binary OpenPGP output from public-key encrypt");
+  return gpgEncryptSmallest(payloadBytes, { encryptionKeys: publicKey });
 }
 
 /**
