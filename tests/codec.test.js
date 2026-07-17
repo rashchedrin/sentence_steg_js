@@ -17,7 +17,11 @@ import {
   gpgSymmetricDecrypt,
   gpgSymmetricEncrypt,
 } from "../src/gpg-crypto.js";
-import { gcmwrapEncrypt, gcmwrapTryDecrypt } from "../src/gcmwrap.js";
+import {
+  GcmwrapInflateLimitError,
+  gcmwrapEncrypt,
+  gcmwrapTryDecrypt,
+} from "../src/gcmwrap.js";
 import {
   AmbiguousPasswordDecryptError,
   decryptWithPassword,
@@ -314,6 +318,17 @@ describe("gcmwrap / password crypto", () => {
   it("rejects wrong password", async () => {
     const sealed = await gcmwrapEncrypt(new TextEncoder().encode("secret"), "right");
     expect(await gcmwrapTryDecrypt(sealed, "wrong")).toBeNull();
+  });
+
+  it("aborts with a zip-bomb warning when inflate exceeds the limit", async () => {
+    const password = "zip-bomb-warn";
+    const compressiblePayload = new TextEncoder().encode("б".repeat(8_000));
+    const sealed = await gcmwrapEncrypt(compressiblePayload, password);
+    await expect(gcmwrapTryDecrypt(sealed, password, 1_000)).rejects.toBeInstanceOf(
+      GcmwrapInflateLimitError,
+    );
+    const restored = await gcmwrapTryDecrypt(sealed, password);
+    expect(restored).toEqual(compressiblePayload);
   });
 
   it("auto-decrypts gcmwrap and gpg without knowing the version", async () => {

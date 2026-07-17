@@ -12,6 +12,9 @@ const TAG_LENGTH = 16;
 const HEADER_LENGTH = 1 + SALT_LENGTH;
 const MIN_CIPHERTEXT_LENGTH = HEADER_LENGTH + TAG_LENGTH + 1;
 
+/** Soft cap: abort inflate with a warning if the payload expands past this. */
+export const GCMWRAP_MAX_INFLATED_BYTES = 16 * 1024 * 1024;
+
 /** Argon2id parameters (interactive, OWASP-style). */
 const ARGON2_OPTIONS = {
   t: 2,
@@ -22,6 +25,27 @@ const ARGON2_OPTIONS = {
 
 const FLAG_RAW = 0x00;
 const FLAG_DEFLATE = 0x01;
+
+/**
+ * Thrown when deflate payload expands past the configured warning threshold.
+ */
+export class GcmwrapInflateLimitError extends Error {
+  /**
+   * @param {number} inflatedByteCount
+   * @param {number} maxInflatedBytes
+   */
+  constructor(inflatedByteCount, maxInflatedBytes) {
+    super(
+      `предупреждение: после распаковки gcmwrap больше ${maxInflatedBytes} байт `
+        + `(уже ${inflatedByteCount}); возможна zip-bomb — расшифровка прервана`,
+    );
+    this.name = "GcmwrapInflateLimitError";
+    /** @type {number} */
+    this.inflatedByteCount = inflatedByteCount;
+    /** @type {number} */
+    this.maxInflatedBytes = maxInflatedBytes;
+  }
+}
 
 /**
  * @param {Uint8Array[]} parts
@@ -51,12 +75,39 @@ async function deflateBytes(bytes) {
 }
 
 /**
+ * Inflate deflate bytes, aborting with a warning if the expansion exceeds maxInflatedBytes.
+ *
  * @param {Uint8Array} bytes
+ * @param {number} maxInflatedBytes
  * @returns {Promise<Uint8Array>}
  */
-async function inflateBytes(bytes) {
+async function inflateBytes(bytes, maxInflatedBytes) {
+  if (maxInflatedBytes < 1) {
+    throw new Error(`expected maxInflatedBytes >= 1, got ${maxInflatedBytes}`);
+  }
   const decompressedStream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate"));
-  return new Uint8Array(await new Response(decompressedStream).arrayBuffer());
+  const reader = decompressedStream.getReader();
+  /** @type {Uint8Array[]} */
+  const chunks = [];
+  let totalLength = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    if (!(value instanceof Uint8Array)) {
+      throw new Error(
+        `expected Uint8Array inflate chunk, got ${Object.prototype.toString.call(value)}`,
+      );
+    }
+    totalLength += value.length;
+    if (totalLength > maxInflatedBytes) {
+      await reader.cancel();
+      throw new GcmwrapInflateLimitError(totalLength, maxInflatedBytes);
+    }
+    chunks.push(value);
+  }
+  return concatBytes(chunks);
 }
 
 /**
@@ -129,12 +180,18 @@ export async function gcmwrapEncrypt(payloadBytes, password) {
 /**
  * Try to decrypt a gcmwrap blob. Returns null when the blob is not this format
  * or authentication fails (wrong password / corrupted data).
+ * Re-throws GcmwrapInflateLimitError (zip-bomb warning threshold).
  *
  * @param {Uint8Array} ciphertextBytes
  * @param {string} password
+ * @param {number} [maxInflatedBytes]
  * @returns {Promise<Uint8Array | null>}
  */
-export async function gcmwrapTryDecrypt(ciphertextBytes, password) {
+export async function gcmwrapTryDecrypt(
+  ciphertextBytes,
+  password,
+  maxInflatedBytes = GCMWRAP_MAX_INFLATED_BYTES,
+) {
   if (!password) {
     throw new Error("expected non-empty password, got empty string");
   }
@@ -162,13 +219,19 @@ export async function gcmwrapTryDecrypt(ciphertextBytes, password) {
     const compressionFlag = plaintext[0];
     const bodyBytes = plaintext.slice(1);
     if (compressionFlag === FLAG_RAW) {
+      if (bodyBytes.length > maxInflatedBytes) {
+        throw new GcmwrapInflateLimitError(bodyBytes.length, maxInflatedBytes);
+      }
       return bodyBytes;
     }
     if (compressionFlag === FLAG_DEFLATE) {
-      return inflateBytes(bodyBytes);
+      return inflateBytes(bodyBytes, maxInflatedBytes);
     }
     return null;
-  } catch {
+  } catch (error) {
+    if (error instanceof GcmwrapInflateLimitError) {
+      throw error;
+    }
     return null;
   }
 }

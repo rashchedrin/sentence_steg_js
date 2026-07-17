@@ -1,7 +1,13 @@
 /** Registry of password-based payload encryption versions. */
 
 import { gpgSymmetricDecrypt, gpgSymmetricEncrypt } from "./gpg-crypto.js";
-import { gcmwrapEncrypt, gcmwrapTryDecrypt } from "./gcmwrap.js";
+import {
+  GcmwrapInflateLimitError,
+  gcmwrapEncrypt,
+  gcmwrapTryDecrypt,
+} from "./gcmwrap.js";
+
+export { GcmwrapInflateLimitError };
 
 /**
  * @typedef {object} PasswordCryptoVersion

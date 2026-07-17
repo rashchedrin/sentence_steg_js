@@ -43,6 +43,8 @@ const encodeModeInputs = document.querySelectorAll('input[name="encode-mode"]');
 const encodeBitsPanel = document.getElementById("encode-bits-panel");
 const encodeFilePanel = document.getElementById("encode-file-panel");
 const encodeTextPanel = document.getElementById("encode-text-panel");
+const encodeCryptoSection = document.getElementById("encode-crypto-section");
+const encodeBitsCryptoHint = document.getElementById("encode-bits-crypto-hint");
 const encodeInput = document.getElementById("encode-input");
 const encodeTextInput = document.getElementById("encode-text-input");
 const encodeFileInput = document.getElementById("encode-file");
@@ -62,6 +64,9 @@ const encodeSavedPublicKey = document.getElementById("encode-saved-public-key");
 const encodeDeletePublicKey = document.getElementById("encode-delete-public-key");
 const encodePublicKeyName = document.getElementById("encode-public-key-name");
 const encodeSavePublicKey = document.getElementById("encode-save-public-key");
+
+/** Warn (confirm) when encoding a file larger than this many bytes. */
+const LARGE_FILE_WARN_BYTES = 256 * 1024;
 
 const decodeInput = document.getElementById("decode-input");
 const decodeUtf8Section = document.getElementById("decode-utf8-section");
@@ -138,6 +143,22 @@ function selectedEncodeMode() {
 }
 
 /**
+ * @param {number} byteCount
+ * @returns {string}
+ */
+function formatByteCount(byteCount) {
+  if (byteCount < 1024) {
+    return `${byteCount} байт`;
+  }
+  if (byteCount < 1024 * 1024) {
+    return `${(byteCount / 1024).toFixed(1)} КиБ`;
+  }
+  return `${(byteCount / (1024 * 1024)).toFixed(1)} МиБ`;
+}
+
+/**
+ * Bits mode embeds raw bits; password/pubkey crypto must not appear available.
+ *
  * @returns {void}
  */
 function updateEncodeModePanels() {
@@ -145,6 +166,49 @@ function updateEncodeModePanels() {
   encodeBitsPanel.hidden = encodeMode !== "bits";
   encodeFilePanel.hidden = encodeMode !== "file";
   encodeTextPanel.hidden = encodeMode !== "text";
+  const bitsMode = encodeMode === "bits";
+  encodeCryptoSection.hidden = bitsMode;
+  encodeBitsCryptoHint.hidden = !bitsMode;
+  if (bitsMode) {
+    encodeUsePassword.checked = false;
+    encodeUsePublicKey.checked = false;
+    updateEncodeCryptoFieldState();
+  }
+}
+
+/**
+ * @param {import("./payload-codec.js").PayloadEncryptOptions} encryptOptions
+ * @returns {boolean} false if the user cancelled
+ */
+function confirmUnencryptedEncodeIfNeeded(encryptOptions) {
+  const hasPassword = encryptOptions.password !== undefined && encryptOptions.password !== null;
+  const hasPublicKey = (
+    encryptOptions.publicKeyArmored !== undefined
+    && encryptOptions.publicKeyArmored !== null
+  );
+  if (hasPassword || hasPublicKey) {
+    return true;
+  }
+  return window.confirm(
+    "Предупреждение: данные будут встроены без шифрования.\n"
+      + "Любой, кто знает алгоритм и версию, сможет извлечь содержимое.\n\n"
+      + "Продолжить без пароля и без публичного ключа?",
+  );
+}
+
+/**
+ * @param {number} fileByteCount
+ * @returns {boolean} false if the user cancelled
+ */
+function confirmLargeFileEncodeIfNeeded(fileByteCount) {
+  if (fileByteCount <= LARGE_FILE_WARN_BYTES) {
+    return true;
+  }
+  return window.confirm(
+    `Предупреждение: файл большой (${formatByteCount(fileByteCount)}).\n`
+      + "Кодирование может занять много памяти и времени, cover-текст будет очень длинным.\n\n"
+      + "Продолжить?",
+  );
 }
 
 /**
@@ -548,7 +612,14 @@ encodeFileInput.addEventListener("change", () => {
     encodeFileInfo.textContent = "Файл не выбран";
     return;
   }
-  encodeFileInfo.textContent = `${selectedFile.name} (${selectedFile.size} байт)`;
+  let infoText = `${selectedFile.name} (${formatByteCount(selectedFile.size)})`;
+  if (selectedFile.size > LARGE_FILE_WARN_BYTES) {
+    infoText += (
+      ` — предупреждение: файл больше ${formatByteCount(LARGE_FILE_WARN_BYTES)}, `
+      + "кодирование может быть тяжёлым"
+    );
+  }
+  encodeFileInfo.textContent = infoText;
 });
 
 encodeButton.addEventListener("click", async () => {
@@ -559,13 +630,23 @@ encodeButton.addEventListener("click", async () => {
   showMessage("");
   encodeButton.disabled = true;
   try {
-    const encryptOptions = selectedEncryptOptions();
     const encodeMode = selectedEncodeMode();
+    if (encodeMode === "bits") {
+      if (encodeUsePassword.checked || encodeUsePublicKey.checked) {
+        throw new Error(
+          "В режиме «Поток бит» шифрование недоступно; снимите пароль/ключ или выберите другой режим",
+        );
+      }
+    }
+    const encryptOptions = encodeMode === "bits" ? {} : selectedEncryptOptions();
     let coverText = "";
     let sourceByteCount = 0;
     let embeddedBitCount = 0;
 
     if (encodeMode === "text") {
+      if (!confirmUnencryptedEncodeIfNeeded(encryptOptions)) {
+        return;
+      }
       const payloadBytes = new TextEncoder().encode(encodeTextInput.value);
       sourceByteCount = payloadBytes.length;
       coverText = await encodeTextToCoverText(encodeTextInput.value, grammar, encryptOptions);
@@ -582,6 +663,12 @@ encodeButton.addEventListener("click", async () => {
       const selectedFile = encodeFileInput.files && encodeFileInput.files[0];
       if (!selectedFile) {
         throw new Error("Выберите бинарный файл");
+      }
+      if (!confirmLargeFileEncodeIfNeeded(selectedFile.size)) {
+        return;
+      }
+      if (!confirmUnencryptedEncodeIfNeeded(encryptOptions)) {
+        return;
       }
       const payloadBytes = new Uint8Array(await selectedFile.arrayBuffer());
       sourceByteCount = payloadBytes.length;
@@ -818,15 +905,32 @@ encodeSavedPublicKey.addEventListener("change", () => {
     updateDeletePublicKeyButtonState();
     return;
   }
-  const savedPublicKey = loadSavedPublicKeys().find((entry) => entry.name === selectedName);
-  if (!savedPublicKey) {
-    refreshSavedPublicKeyOptions("");
-    return;
-  }
-  encodePublicKey.value = savedPublicKey.armored;
-  encodePublicKeyName.value = savedPublicKey.name;
-  g_publicKeyNameEditedManually = true;
-  updateDeletePublicKeyButtonState();
+  void (async () => {
+    const savedPublicKey = loadSavedPublicKeys().find((entry) => entry.name === selectedName);
+    if (!savedPublicKey) {
+      refreshSavedPublicKeyOptions("");
+      return;
+    }
+    try {
+      const { fingerprint } = await readPublicKeyMetadata(savedPublicKey.armored);
+      if (fingerprint !== savedPublicKey.fingerprint) {
+        throw new Error(
+          `отпечаток сохранённого ключа «${savedPublicKey.name}» не совпал: `
+            + `ожидался ${savedPublicKey.fingerprint}, получен ${fingerprint} `
+            + "(запись в браузере могла быть подменена)",
+        );
+      }
+      encodePublicKey.value = savedPublicKey.armored;
+      encodePublicKeyName.value = savedPublicKey.name;
+      g_publicKeyNameEditedManually = true;
+      updateDeletePublicKeyButtonState();
+    } catch (error) {
+      encodeSavedPublicKey.value = "";
+      encodePublicKey.value = "";
+      updateDeletePublicKeyButtonState();
+      showMessage(error instanceof Error ? error.message : String(error));
+    }
+  })();
 });
 
 encodePublicKey.addEventListener("input", () => {
@@ -848,6 +952,19 @@ encodeSavePublicKey.addEventListener("click", async () => {
     }
     const { fingerprint, defaultName } = await readPublicKeyMetadata(publicKeyArmored);
     const keyName = encodePublicKeyName.value.trim() || defaultName;
+    const existingKey = loadSavedPublicKeys().find((entry) => entry.name === keyName);
+    if (existingKey) {
+      const overwriteConfirmed = window.confirm(
+        `Ключ с именем «${keyName}» уже сохранён`
+          + (existingKey.fingerprint !== fingerprint
+            ? ` (другой отпечаток: ${existingKey.fingerprint} → ${fingerprint})`
+            : "")
+          + ".\n\nЗаменить сохранённый ключ?",
+      );
+      if (!overwriteConfirmed) {
+        return;
+      }
+    }
     savePublicKey({ name: keyName, armored: publicKeyArmored, fingerprint });
     refreshSavedPublicKeyOptions(keyName);
     encodePublicKeyName.value = keyName;

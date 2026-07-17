@@ -83,69 +83,76 @@
             <p id="encode-file-info" class="file-info">Файл не выбран</p>
           </div>
 
-          <div class="crypto-control">
-            <label class="checkbox-label">
-              <input type="checkbox" id="encode-use-password">
-              Зашифровать паролем
-            </label>
-            <label class="label" for="encode-password">Пароль</label>
-            <input
-              id="encode-password"
-              class="text-input"
-              type="password"
-              autocomplete="new-password"
-              disabled
-            >
-            <label class="label" for="encode-password-crypto-version">Метод шифрования паролем</label>
-            <select id="encode-password-crypto-version" class="select" disabled></select>
-          </div>
+          <p id="encode-bits-crypto-hint" class="field-hint" hidden>
+            В режиме «Поток бит» шифрование недоступно: биты встраиваются как есть,
+            без пароля и без публичного ключа.
+          </p>
 
-          <div class="crypto-control">
-            <label class="checkbox-label">
-              <input type="checkbox" id="encode-use-public-key">
-              Зашифровать публичным ключом GPG
-            </label>
-
-            <label class="label" for="encode-saved-public-key">Сохранённый ключ</label>
-            <div class="key-picker">
-              <select id="encode-saved-public-key" class="select" disabled>
-                <option value="">— вставить новый ключ —</option>
-              </select>
-              <button
-                class="button secondary"
-                id="encode-delete-public-key"
-                type="button"
-                disabled
-                hidden
-              >Удалить</button>
-            </div>
-
-            <label class="label" for="encode-public-key">Публичный ключ (ASCII armor)</label>
-            <textarea
-              id="encode-public-key"
-              class="textarea textarea-mono"
-              rows="6"
-              placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----&#10;...&#10;-----END PGP PUBLIC KEY BLOCK-----"
-              spellcheck="false"
-              disabled
-            ></textarea>
-
-            <label class="label" for="encode-public-key-name">Имя ключа</label>
-            <div class="key-picker">
+          <div id="encode-crypto-section">
+            <div class="crypto-control">
+              <label class="checkbox-label">
+                <input type="checkbox" id="encode-use-password">
+                Зашифровать паролем
+              </label>
+              <label class="label" for="encode-password">Пароль</label>
               <input
-                id="encode-public-key-name"
+                id="encode-password"
                 class="text-input"
-                type="text"
-                placeholder="Имя из ключа подставится автоматически"
-                autocomplete="off"
+                type="password"
+                autocomplete="new-password"
                 disabled
               >
-              <button
-                class="button secondary"
-                id="encode-save-public-key"
-                type="button"
+              <label class="label" for="encode-password-crypto-version">Метод шифрования паролем</label>
+              <select id="encode-password-crypto-version" class="select" disabled></select>
+            </div>
+
+            <div class="crypto-control">
+              <label class="checkbox-label">
+                <input type="checkbox" id="encode-use-public-key">
+                Зашифровать публичным ключом GPG
+              </label>
+
+              <label class="label" for="encode-saved-public-key">Сохранённый ключ</label>
+              <div class="key-picker">
+                <select id="encode-saved-public-key" class="select" disabled>
+                  <option value="">— вставить новый ключ —</option>
+                </select>
+                <button
+                  class="button secondary"
+                  id="encode-delete-public-key"
+                  type="button"
+                  disabled
+                  hidden
+                >Удалить</button>
+              </div>
+
+              <label class="label" for="encode-public-key">Публичный ключ (ASCII armor)</label>
+              <textarea
+                id="encode-public-key"
+                class="textarea textarea-mono"
+                rows="6"
+                placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----&#10;...&#10;-----END PGP PUBLIC KEY BLOCK-----"
+                spellcheck="false"
                 disabled
-              >Сохранить публичный ключ в браузере</button>
+              ></textarea>
+
+              <label class="label" for="encode-public-key-name">Имя ключа</label>
+              <div class="key-picker">
+                <input
+                  id="encode-public-key-name"
+                  class="text-input"
+                  type="text"
+                  placeholder="Имя из ключа подставится автоматически"
+                  autocomplete="off"
+                  disabled
+                >
+                <button
+                  class="button secondary"
+                  id="encode-save-public-key"
+                  type="button"
+                  disabled
+                >Сохранить публичный ключ в браузере</button>
+              </div>
             </div>
           </div>
 
